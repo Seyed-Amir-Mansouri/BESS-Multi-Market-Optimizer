@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bess-spain"
+version = "0.1.0"
+description = "Integrated Battery Trading and Revenue Optimization Tool for Day-Ahead, Intraday, and Balancing Markets"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.1",
+    "pyarrow>=14",
+    "duckdb>=1.0",
+    "requests>=2.31",
+    "pyyaml>=6.0",
+    "entsoe-py>=0.6",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4"]
+# Needed from Phase 2 onwards (not used in Phase 1).
+optim = ["highspy>=1.7", "linopy>=0.3", "lightgbm>=4.0", "scikit-learn>=1.3"]
+
+[project.scripts]
+bess = "bess.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["bess*"]
+
+[tool.setuptools.package-data]
+bess = ["config/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
