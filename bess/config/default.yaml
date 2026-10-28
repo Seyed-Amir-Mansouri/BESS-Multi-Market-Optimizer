@@ -1,0 +1,206 @@
+# BESS Multi-Market Optimizer - Spanish multi-market BESS optimization tool
+# Default configuration. Override any key with your own YAML via `bess --config my.yaml ...`
+# (deep-merged on top of this file). Secrets are NEVER stored here: they are read from
+# the environment variables ESIOS_API_KEY and ENTSOE_API_KEY.
+#
+# Every market fact that needs verification carries a `verified` field:
+#   data        - confirmed from downloaded data (see `bess verify`)
+#   docs        - confirmed from an official / primary document
+#   secondary   - from a secondary source (blog, trade press); still needs a primary source
+#   no          - assumption, must be checked before live use
+# `bess verify` re-checks the data-verifiable items and prints the result.
+
+project:
+  name: "BESS Multi-Market Optimizer"
+  timezone: Europe/Madrid
+
+paths:
+  data_dir: data_store
+  report_dir: reports
+
+data:
+  start: "2024-01-01"
+  end: null
+  http:
+    timeout_s: 60
+    retries: 4
+    backoff_s: 2.0
+    polite_delay_s: 0.25
+    user_agent: "bess-spain/0.1 (research backtest)"
+
+backtest:
+  start: "2024-06-14"
+
+battery:
+  power_mw: 5.0
+  energy_mwh: 10.0
+  eta_charge: 0.95
+  eta_discharge: 0.95
+  soc_min_frac: 0.0
+  soc_max_frac: 1.0
+  soc_initial_frac: 0.5
+  degradation_eur_per_mwh: 3.0
+  max_cycles_per_day: 2.0
+
+# --------------------------------------------------------------------------------------
+# Markets: gate closures and results-publication times (local time, day offset relative
+# to delivery day D). Results times are deliberately conservative (late): they are used
+# as publication times for no-lookahead, so erring late is safe, erring early is not.
+# --------------------------------------------------------------------------------------
+markets:
+  da:
+    label: "Day-ahead (OMIE / SDAC)"
+    gate: {day_offset: -1, time: "12:00"}
+    results: {day_offset: -1, time: "13:30"}
+    coverage: {from: "00:00", to: "24:00"}
+    price_limits: {min: -500.0, max: 4000.0}
+    verified:
+      gate: docs
+      results: no
+      price_limits: docs
+  ida1:
+    label: "IDA1 (OMIE / SIDC)"
+    gate: {day_offset: -1, time: "15:00"}
+    results: {day_offset: -1, time: "15:45"}
+    coverage: {from: "00:00", to: "24:00"}
+    price_limits: {min: -9999.0, max: 9999.0}
+    verified: {gate: docs, results: no, coverage: docs, price_limits: docs}
+  ida2:
+    label: "IDA2 (OMIE / SIDC)"
+    gate: {day_offset: -1, time: "22:00"}
+    results: {day_offset: -1, time: "22:45"}
+    coverage: {from: "00:00", to: "24:00"}
+    price_limits: {min: -9999.0, max: 9999.0}
+    verified: {gate: docs, results: no, coverage: docs, price_limits: docs}
+  ida3:
+    label: "IDA3 (OMIE / SIDC)"
+    gate: {day_offset: 0, time: "10:00"}
+    results: {day_offset: 0, time: "10:45"}
+    coverage: {from: "12:00", to: "24:00"}
+    price_limits: {min: -9999.0, max: 9999.0}
+    verified: {gate: docs, results: no, coverage: docs, price_limits: docs}
+  afrr_capacity:
+    label: "aFRR capacity (REE band market)"
+    gate: {day_offset: -1, time: "16:00"}
+    results: {day_offset: -1, time: "17:30"}
+    coverage: {from: "00:00", to: "24:00"}
+    price_limits: {min: 0.0, max: null}
+    verified:
+      gate: secondary
+      results: no
+      resolution: no
+
+# Market-design regime boundaries (delivery dates). Used to split reports by period.
+regimes:
+  ida_start:     {date: "2024-06-14", verified: docs,      note: "new European IDAs replace MIBEL intraday sessions"}
+  afrr_split:    {date: "2024-11-20", verified: no,        note: "separate up/down aFRR capacity merit order; exact day detected by `bess verify`"}
+  ida_qh:        {date: "2025-03-19", verified: secondary, note: "first IDA with 15-min products held 18 Mar 2025; detected from OMIE files"}
+  picasso:       {date: "2025-06-01", verified: no,        note: "Spain joins PICASSO (aFRR energy platform), June 2025; exact day to confirm"}
+  da_qh:         {date: "2025-10-01", verified: docs,      note: "SDAC 15-min MTU go-live"}
+
+# --------------------------------------------------------------------------------------
+# Storage-specific fees and taxes. NOT yet verified against BOE / CNMC primary texts.
+# Phase 2 reads these; keep them at the values below until confirmed.
+# --------------------------------------------------------------------------------------
+fees:
+  generation_toll_eur_per_mwh:
+    value: 0.5
+    applies_to: discharge
+    verified: no
+    note: "peaje de acceso a la generacion (RD 1544/2011). Confirm it applies to standalone storage."
+  ivpee_rate:
+    value: 0.07
+    applies_to: discharge_revenue
+    verified: no
+    note: "Impuesto sobre el valor de la produccion de energia electrica (Ley 15/2012), 7%. Sector reports double taxation for storage; confirm base for BESS."
+  access_toll_charging_eur_per_mwh:
+    value: 0.0
+    applies_to: charge
+    verified: no
+    note: "Circular CNMC 3/2020 under revision (2026-2031) to remove double charging of storage. Set from the applicable tariff once confirmed."
+  market_operator_fee_eur_per_mwh:
+    value: 0.0
+    applies_to: both
+    verified: no
+    note: "OMIE / REE participation fees - to be filled in from the current OMIE fee schedule."
+
+# --------------------------------------------------------------------------------------
+# OMIE public files
+# --------------------------------------------------------------------------------------
+omie:
+  base_url: "https://www.omie.es/es/file-download"
+  max_version: 3
+  use_yearly_zip: true
+  ida_sessions: [1, 2, 3]
+  ida_first_day: "2024-06-14"
+  download_curves: false
+
+# --------------------------------------------------------------------------------------
+# REE eSIOS indicators. `expect` = words that must appear in the indicator name
+# (accent-insensitive); `bess verify` fetches each indicator's metadata and flags
+# mismatches. `id: null` = not yet identified; use `bess esios-catalog --search ...`.
+# pub_rule types:
+#   market_results   - published at the results time of `market` (see markets:)
+#   day_offset       - published at local `time` on delivery day + `day_offset`
+#   after_delivery   - published `minutes` after the end of each delivery period
+# `assumed: true` marks rules not backed by a document (flagged in the timeline report).
+# --------------------------------------------------------------------------------------
+esios:
+  base_url: "https://api.esios.ree.es"
+  chunk_days: 31
+  indicators:
+    da_price_esios:      {id: 600,  geo_ids: [3], unit: "EUR/MWh", expect: ["diario"],                 pub_rule: {type: market_results, market: da}, role: "cross-check of OMIE DA"}
+    afrr_band_price:     {id: 634,  unit: "EUR/MW",  expect: ["secundaria"],                            pub_rule: {type: market_results, market: afrr_capacity}, role: "single band price before the up/down split"}
+    afrr_band_price_up:  {id: 2130, unit: "EUR/MW",  expect: ["secundaria", "subir"],                   pub_rule: {type: market_results, market: afrr_capacity}, role: "candidate id from a secondary source"}
+    afrr_band_price_down: {id: 2131, unit: "EUR/MW", expect: ["secundaria", "bajar"],                   pub_rule: {type: market_results, market: afrr_capacity}, role: "candidate id, unverified"}
+    afrr_band_up_mw:     {id: 632,  unit: "MW",      expect: ["secundaria", "subir"],                   pub_rule: {type: market_results, market: afrr_capacity}}
+    afrr_band_down_mw:   {id: 633,  unit: "MW",      expect: ["secundaria", "bajar"],                   pub_rule: {type: market_results, market: afrr_capacity}}
+    afrr_energy_price_up:   {id: 682, unit: "EUR/MWh", expect: ["secundaria", "subir"],                 pub_rule: {type: after_delivery, minutes: 60, assumed: true}}
+    afrr_energy_price_down: {id: 683, unit: "EUR/MWh", expect: ["secundaria", "bajar"],                 pub_rule: {type: after_delivery, minutes: 60, assumed: true}}
+    afrr_energy_up_mwh:   {id: 680, unit: "MWh", expect: ["secundaria", "subir"],                       pub_rule: {type: after_delivery, minutes: 60, assumed: true}, role: "candidate id, unverified"}
+    afrr_energy_down_mwh: {id: 681, unit: "MWh", expect: ["secundaria", "bajar"],                       pub_rule: {type: after_delivery, minutes: 60, assumed: true}, role: "candidate id, unverified"}
+    demand_forecast:     {id: 460,  unit: "MW", expect: ["demanda"],   pub_rule: {type: day_offset, day_offset: -1, time: "11:00", assumed: true}}
+    wind_forecast:       {id: 541,  unit: "MW", expect: ["eolica"],    pub_rule: {type: day_offset, day_offset: -1, time: "11:00", assumed: true}}
+    solar_pv_forecast:   {id: 542,  unit: "MW", expect: ["solar"],     pub_rule: {type: day_offset, day_offset: -1, time: "11:00", assumed: true}}
+    demand_actual:       {id: 1293, unit: "MW", expect: ["demanda"],   time_trunc: fifteen_minutes, time_agg: average, pub_rule: {type: after_delivery, minutes: 15, assumed: true}}
+    wind_actual:         {id: 551,  unit: "MW", expect: ["eolica"],    time_trunc: fifteen_minutes, time_agg: average, pub_rule: {type: after_delivery, minutes: 60, assumed: true}}
+    solar_pv_actual:     {id: 1295, unit: "MW", expect: ["solar"],     time_trunc: fifteen_minutes, time_agg: average, pub_rule: {type: after_delivery, minutes: 60, assumed: true}}
+
+# --------------------------------------------------------------------------------------
+# ENTSO-E Transparency Platform (bidding zone ES). Publication rules follow the
+# Transparency Regulation (EU 543/2013) deadlines.
+# --------------------------------------------------------------------------------------
+entsoe:
+  country_code: ES
+  chunk_days: 31
+  datasets:
+    da_price_entsoe:     {query: day_ahead_prices,       unit: "EUR/MWh", pub_rule: {type: market_results, market: da}}
+    load_forecast_entsoe: {query: load_forecast,         unit: "MW", pub_rule: {type: day_offset, day_offset: -1, time: "10:00"}, note: "Art. 6.1(b): no later than 2h before DA gate"}
+    wind_solar_forecast_entsoe: {query: wind_and_solar_forecast, unit: "MW", pub_rule: {type: day_offset, day_offset: -1, time: "18:00"}, note: "Art. 14.1(d): by 18:00 D-1 - NOT available at the DA gate"}
+    load_actual_entsoe:  {query: load,                   unit: "MW", pub_rule: {type: after_delivery, minutes: 60}}
+    generation_actual_entsoe: {query: generation,        unit: "MW", pub_rule: {type: after_delivery, minutes: 60}}
+  download_outages: true
+
+# --------------------------------------------------------------------------------------
+# Open-Meteo Previous Runs API: archived FORECASTS (not actuals). Variable suffix
+# `_previous_dayN` = value from the model run ~N days before the target hour.
+# Publication time = target - N days + model_delay_h.
+# lead_days 2 is available at the DA gate for every hour of D; lead 1 only for the IDAs.
+# --------------------------------------------------------------------------------------
+weather:
+  base_url: "https://previous-runs-api.open-meteo.com/v1/forecast"
+  model: best_match
+  lead_days: [1, 2]
+  model_delay_h: 6
+  chunk_days: 92
+  variables: [temperature_2m, wind_speed_100m, shortwave_radiation, cloud_cover]
+  locations:
+    madrid:    {lat: 40.42, lon: -3.70, role: demand}
+    barcelona: {lat: 41.39, lon: 2.17,  role: demand}
+    valencia:  {lat: 39.47, lon: -0.38, role: demand}
+    sevilla:   {lat: 37.39, lon: -5.99, role: solar}
+    badajoz:   {lat: 38.88, lon: -6.97, role: solar}
+    albacete:  {lat: 38.99, lon: -1.86, role: wind_solar}
+    zaragoza:  {lat: 41.65, lon: -0.89, role: wind}
+    burgos:    {lat: 42.34, lon: -3.70, role: wind}
+    a_coruna:  {lat: 43.36, lon: -8.41, role: wind}
