@@ -57,7 +57,7 @@ Other useful commands:
 | `bess export-duckdb` | `data_store/bess.duckdb` with views `records` and `events_*` for SQL tools |
 | `bess --config my.yaml ...` | your YAML deep-merged over `bess/config/default.yaml` |
 
-Downloads are resumable and idempotent. Raw files are cached under `data_store/raw/`, so a re-run only fetches what is missing or still recent (the last 7 days). The first full download takes a while (roughly 30–60 min), mostly because OMIE daily files are fetched politely, one by one. Completed years come as one zip each.
+Downloads are resumable and idempotent. Raw files are cached under `data_store/raw/`, so a re-run only fetches what is missing or still recent (the last 7 days). The first full download takes about 1.5 hours, mostly because OMIE has no yearly zips and its daily files are fetched politely, one by one.
 
 ## Data model
 
@@ -95,13 +95,13 @@ Facts that cannot be read from data (gate times, fees and taxes) are recorded in
 | Item | Finding | Status |
 |---|---|---|
 | IDA gates and coverage | IDA1 D-1 15:00 and IDA2 D-1 22:00 cover all of D; IDA3 D 10:00 covers 12:00–24:00 of D | docs (SIDC / NEMO Committee) |
-| IDA 15-min products | first quarter-hour IDA held 18 Mar 2025 | secondary; confirm with `bess verify` |
+| IDA 15-min products | first quarter-hour delivery day 19 Mar 2025 (IDA1/IDA2 held 18 Mar) | data |
 | DA 15-min | 1 Oct 2025 | docs |
 | DA price limits | SDAC −500 / +4000 €/MWh (reference values; automatic increase mechanism, amended by ACER Decisions 02/2026 and 03/2026) | docs; observed range checked |
 | IDA price limits | SIDC ±9999 €/MWh | docs |
-| aFRR capacity gate | 16:00 CET D-1 | secondary; confirm in REE P.O. 7.2 |
-| aFRR up/down split | REE: two independent upward/downward reserve auctions (terms approved Apr 2024) | the exact first day is detected from data |
-| eSIOS ids | 632/633 band up/down, 634 band price, 682/683 aFRR energy price up/down (REE API docs); 2130/2131 separate band prices are candidates only | name-checked by `bess verify` |
+| aFRR capacity gate | offers D-1 17:00, assignment D-1 17:30 (P.O. 3.1, CNMC resolution of 19 Jan 2026, BOE-A-2026-1377); 16:00 / 16:30 before | docs |
+| aFRR up/down split | first day with a separate upward price: 20 Nov 2024 | data |
+| eSIOS ids | 2130 band price up, 634 band price down (single price before 20 Nov 2024), 632/633 band up/down, 682/683 energy price up/down, 680/681 activated energy up/down | data |
 | Storage fees and taxes | generation toll 0.5 €/MWh, IVPEE 7% and charging tolls all unconfirmed for standalone BESS; CNMC is revising Circular 3/2020 to remove double charging of storage | **open**: needs BOE / CNMC texts |
 
 ## Project layout
