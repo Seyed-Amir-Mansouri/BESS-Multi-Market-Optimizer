@@ -90,7 +90,7 @@ def check_ida_coverage(store: Store, cfg: Config) -> list[dict]:
 
 def check_afrr(store: Store, cfg: Config) -> list[dict]:
     rows = []
-    keys = ["afrr_band_price", "afrr_band_price_up", "afrr_band_price_down", "afrr_band_up_mw", "afrr_band_down_mw",
+    keys = ["afrr_band_price_up", "afrr_band_price_down", "afrr_band_up_mw", "afrr_band_down_mw",
             "afrr_energy_price_up", "afrr_energy_price_down", "afrr_energy_up_mwh", "afrr_energy_down_mwh"]
     found = {}
     for k in keys:
@@ -101,21 +101,21 @@ def check_afrr(store: Store, cfg: Config) -> list[dict]:
         res = df.groupby("resolution_min")["day"].agg(["min", "max"])
         found[k] = (df["day"].min(), df["day"].max(), res)
     q = "aFRR capacity: time resolution (hourly vs 15-min) per period"
-    if not any(k in found for k in keys[:5]):
+    if not any(k in found for k in keys[:4]):
         rows.append(_row("afrr_resolution", q, "", "no data"))
     else:
         parts = []
-        for k in keys[:5]:
+        for k in keys[:4]:
             if k in found:
                 r = found[k][2]
                 parts.append(f"{k}: " + ", ".join(f"{int(i)}-min {row['min']}..{row['max']}" for i, row in r.iterrows()))
         rows.append(_row("afrr_resolution", q, " | ".join(parts), "data"))
     q = "aFRR capacity: date of the separate upward/downward price"
-    if "afrr_band_price_up" in found or "afrr_band_price_down" in found:
-        first = min(found[k][0] for k in ("afrr_band_price_up", "afrr_band_price_down") if k in found)
-        single_last = found["afrr_band_price"][1] if "afrr_band_price" in found else None
-        rows.append(_row("afrr_split", q, f"first day with separate up/down price: {first}; single price last seen {single_last}",
-                         "data", f"config regimes.afrr_split = {cfg['regimes']['afrr_split']['date']}"))
+    if "afrr_band_price_up" in found:
+        first = found["afrr_band_price_up"][0]
+        expected = cfg["regimes"]["afrr_split"]["date"]
+        rows.append(_row("afrr_split", q, f"first day with a separate upward price: {first}",
+                         "data" if str(first) == expected else "mismatch", f"config regimes.afrr_split = {expected}"))
     else:
         rows.append(_row("afrr_split", q, "", "no data"))
     q = "aFRR activation share inputs available (activated energy and awarded band, up and down)?"
@@ -169,7 +169,7 @@ def check_esios_indicators(store: Store, cfg: Config, client=None) -> list[dict]
 def check_price_limits(store: Store, cfg: Config) -> list[dict]:
     rows = []
     for m in ("da", "ida1", "ida2", "ida3", "afrr_capacity"):
-        series = [f"{m}_price_es"] if m != "afrr_capacity" else ["afrr_band_price", "afrr_band_price_up", "afrr_band_price_down"]
+        series = [f"{m}_price_es"] if m != "afrr_capacity" else ["afrr_band_price_up", "afrr_band_price_down"]
         df = store.load(series=series)
         lim = cfg["markets"][m]["price_limits"]
         q = f"{m.upper()} price limits (config min {lim.get('min')}, max {lim.get('max')})"

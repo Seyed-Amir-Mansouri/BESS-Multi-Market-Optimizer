@@ -18,7 +18,7 @@ from ..timeutils import delivery_day, local_time_utc
 from .store import Store
 
 PRICE_SERIES = ["da_price_es", "ida1_price_es", "ida2_price_es", "ida3_price_es",
-                "afrr_band_price", "afrr_band_price_up", "afrr_band_price_down",
+                "afrr_band_price_up", "afrr_band_price_down",
                 "afrr_energy_price_up", "afrr_energy_price_down"]
 
 

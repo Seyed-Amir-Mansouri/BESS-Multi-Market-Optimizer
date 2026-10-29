@@ -150,15 +150,14 @@ esios:
   chunk_days: 31
   indicators:
     da_price_esios:      {id: 600,  geo_ids: [3], unit: "EUR/MWh", expect: ["diario"],                 pub_rule: {type: market_results, market: da}, role: "cross-check of OMIE DA"}
-    afrr_band_price:     {id: 634,  unit: "EUR/MW",  expect: ["secundaria"],                            pub_rule: {type: market_results, market: afrr_capacity}, role: "single band price before the up/down split"}
-    afrr_band_price_up:  {id: 2130, unit: "EUR/MW",  expect: ["secundaria", "subir"],                   pub_rule: {type: market_results, market: afrr_capacity}, role: "candidate id from a secondary source"}
-    afrr_band_price_down: {id: 2131, unit: "EUR/MW", expect: ["secundaria", "bajar"],                   pub_rule: {type: market_results, market: afrr_capacity}, role: "candidate id, unverified"}
+    afrr_band_price_up:  {id: 2130, unit: "EUR/MW",  expect: ["precio", "reserva", "secundaria", "subir"], pub_rule: {type: market_results, market: afrr_capacity}, role: "from 2024-11-20"}
+    afrr_band_price_down: {id: 634, unit: "EUR/MW",  expect: ["precio", "reserva", "secundaria", "bajar"], pub_rule: {type: market_results, market: afrr_capacity}, role: "single band price for both directions before 2024-11-20"}
     afrr_band_up_mw:     {id: 632,  unit: "MW",      expect: ["secundaria", "subir"],                   pub_rule: {type: market_results, market: afrr_capacity}}
     afrr_band_down_mw:   {id: 633,  unit: "MW",      expect: ["secundaria", "bajar"],                   pub_rule: {type: market_results, market: afrr_capacity}}
     afrr_energy_price_up:   {id: 682, unit: "EUR/MWh", expect: ["secundaria", "subir"],                 pub_rule: {type: after_delivery, minutes: 60, assumed: true}}
     afrr_energy_price_down: {id: 683, unit: "EUR/MWh", expect: ["secundaria", "bajar"],                 pub_rule: {type: after_delivery, minutes: 60, assumed: true}}
-    afrr_energy_up_mwh:   {id: 680, unit: "MWh", expect: ["secundaria", "subir"],                       pub_rule: {type: after_delivery, minutes: 60, assumed: true}, role: "candidate id, unverified"}
-    afrr_energy_down_mwh: {id: 681, unit: "MWh", expect: ["secundaria", "bajar"],                       pub_rule: {type: after_delivery, minutes: 60, assumed: true}, role: "candidate id, unverified"}
+    afrr_energy_up_mwh:   {id: 680, unit: "MWh", expect: ["energia activada", "secundaria", "subir"],   pub_rule: {type: after_delivery, minutes: 60, assumed: true}}
+    afrr_energy_down_mwh: {id: 681, unit: "MWh", expect: ["energia activada", "secundaria", "bajar"],   pub_rule: {type: after_delivery, minutes: 60, assumed: true}}
     demand_forecast:     {id: 460,  unit: "MW", expect: ["demanda"],   pub_rule: {type: day_offset, day_offset: -1, time: "11:00", assumed: true}}
     wind_forecast:       {id: 541,  unit: "MW", expect: ["eolica"],    pub_rule: {type: day_offset, day_offset: -1, time: "11:00", assumed: true}}
     solar_pv_forecast:   {id: 542,  unit: "MW", expect: ["solar"],     pub_rule: {type: day_offset, day_offset: -1, time: "11:00", assumed: true}}

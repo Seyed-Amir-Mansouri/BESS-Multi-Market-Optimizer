@@ -142,7 +142,7 @@ def build_quality_report(store: Store, cfg: Config, out_path: Path, esios_client
     ver = verify.run_verifications(store, cfg, esios_client)
     avail = timeline.gate_availability(store, cfg)
     months = quality.monthly_stats(store, cfg)
-    afrr_periods = quality.by_period(store, cfg, ["afrr_band_price", "afrr_band_price_up", "afrr_band_price_down",
+    afrr_periods = quality.by_period(store, cfg, ["afrr_band_price_up", "afrr_band_price_down",
                                                  "afrr_energy_price_up", "afrr_energy_price_down"])
     sched = timeline.gate_schedule(cfg, date.today())
 
@@ -218,7 +218,7 @@ def build_quality_report(store: Store, cfg: Config, out_path: Path, esios_client
         b.append("<h3>Energy markets: monthly mean price (EUR/MWh)</h3>")
         b.append(line_chart(mm, "month", ["da_price_es", "ida1_price_es", "ida2_price_es", "ida3_price_es"], "EUR/MWh"))
         b.append("<h3>aFRR capacity: monthly mean price (EUR/MW per hour)</h3>")
-        b.append(line_chart(mm, "month", ["afrr_band_price", "afrr_band_price_up", "afrr_band_price_down"], "EUR/MW/h"))
+        b.append(line_chart(mm, "month", ["afrr_band_price_up", "afrr_band_price_down"], "EUR/MW/h"))
         b.append(table(months, fmt={"n": "{:,}"}))
     else:
         b.append('<p class="muted">No data.</p>')
