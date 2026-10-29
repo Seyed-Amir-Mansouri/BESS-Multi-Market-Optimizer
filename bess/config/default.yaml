@@ -192,7 +192,7 @@ weather:
   model: best_match
   lead_days: [1, 2]
   model_delay_h: 6
-  chunk_days: 92
+  chunk_days: 31
   variables: [temperature_2m, wind_speed_100m, shortwave_radiation, cloud_cover]
   locations:
     madrid:    {lat: 40.42, lon: -3.70, role: demand}

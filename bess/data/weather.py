@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from datetime import date, timedelta
 
 import pandas as pd
@@ -86,13 +87,25 @@ class WeatherDownloader:
         for a, b in chunks(start, end, self.wcfg["chunk_days"]):
             path = self.store.raw_path(SOURCE, f"previous_runs_{a:%Y%m%d}_{b:%Y%m%d}.json")
             settled = b < date.today() - timedelta(days=7)
-            if not (path.exists() and settled and not force):
-                r = self.http.get(self.wcfg["base_url"], params=self.params(a, b))
-                if r.status_code != 200:
-                    log.error("Open-Meteo %s..%s: HTTP %s %s", a, b, r.status_code, r.text[:300])
+            if path.exists() and settled and not force:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            else:
+                payload = None
+                for attempt in range(4):
+                    r = self.http.get(self.wcfg["base_url"], params=self.params(a, b))
+                    if r.status_code != 200:
+                        log.error("Open-Meteo %s..%s: HTTP %s %s", a, b, r.status_code, r.text[:300])
+                        break
+                    try:
+                        payload = json.loads(r.text)
+                        break
+                    except json.JSONDecodeError:
+                        log.warning("Open-Meteo %s..%s: truncated response, retry %d", a, b, attempt + 1)
+                        time.sleep(2 ** (attempt + 1))
+                if payload is None:
                     continue
-                path.write_text(r.text, encoding="utf-8")
-            recs.append(parse_previous_runs(json.loads(path.read_text(encoding="utf-8")), locations, self.cfg))
+                path.write_text(json.dumps(payload), encoding="utf-8")
+            recs.append(parse_previous_runs(payload, locations, self.cfg))
         recs = [r for r in recs if not r.empty]
         return {"weather": self.store.write(pd.concat(recs, ignore_index=True)) if recs else 0}
 
