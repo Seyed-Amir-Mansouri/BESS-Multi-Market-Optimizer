@@ -1,14 +1,4 @@
 # Integrated Battery Trading and Revenue Optimization Tool for Day-Ahead, Intraday, and Balancing Markets
-# Default configuration. Override any key with your own YAML via `bess --config my.yaml ...`
-# (deep-merged on top of this file). Secrets are NEVER stored here: they are read from
-# the environment variables ESIOS_API_KEY and ENTSOE_API_KEY.
-#
-# Every market fact that needs verification carries a `verified` field:
-#   data        - confirmed from downloaded data (see `bess verify`)
-#   docs        - confirmed from an official / primary document
-#   secondary   - from a secondary source (blog, trade press); still needs a primary source
-#   no          - assumption, must be checked before live use
-# `bess verify` re-checks the data-verifiable items and prints the result.
 
 project:
   name: "Integrated Battery Trading and Revenue Optimization Tool for Day-Ahead, Intraday, and Balancing Markets"
@@ -42,11 +32,7 @@ battery:
   degradation_eur_per_mwh: 3.0
   max_cycles_per_day: 2.0
 
-# --------------------------------------------------------------------------------------
-# Markets: gate closures and results-publication times (local time, day offset relative
-# to delivery day D). Results times are deliberately conservative (late): they are used
-# as publication times for no-lookahead, so erring late is safe, erring early is not.
-# --------------------------------------------------------------------------------------
+# Markets
 markets:
   da:
     label: "Day-ahead (OMIE / SDAC)"
@@ -90,7 +76,7 @@ markets:
       results: docs
       resolution: no
 
-# Market-design regime boundaries (delivery dates). Used to split reports by period.
+# Regimes
 regimes:
   ida_start:     {date: "2024-06-14", verified: docs,      note: "new European IDAs replace MIBEL intraday sessions"}
   afrr_split:    {date: "2024-11-20", verified: data,      note: "separate up/down aFRR capacity merit order; exact day detected by `bess verify`"}
@@ -98,10 +84,7 @@ regimes:
   picasso:       {date: "2025-06-19", verified: docs,      note: "Red Eléctrica accession to PICASSO (ENTSO-E, 19 Jun 2025)"}
   da_qh:         {date: "2025-10-01", verified: docs,      note: "SDAC 15-min MTU go-live"}
 
-# --------------------------------------------------------------------------------------
-# Storage-specific fees and taxes. NOT yet verified against BOE / CNMC primary texts.
-# Phase 2 reads these; keep them at the values below until confirmed.
-# --------------------------------------------------------------------------------------
+# Fees
 fees:
   generation_toll_eur_per_mwh:
     value: 0.5
@@ -124,9 +107,7 @@ fees:
     verified: no
     note: "OMIE / REE participation fees - to be filled in from the current OMIE fee schedule."
 
-# --------------------------------------------------------------------------------------
-# OMIE public files
-# --------------------------------------------------------------------------------------
+# OMIE
 omie:
   base_url: "https://www.omie.es/es/file-download"
   max_version: 3
@@ -135,16 +116,7 @@ omie:
   ida_first_day: "2024-06-14"
   download_curves: false
 
-# --------------------------------------------------------------------------------------
-# REE eSIOS indicators. `expect` = words that must appear in the indicator name
-# (accent-insensitive); `bess verify` fetches each indicator's metadata and flags
-# mismatches. `id: null` = not yet identified; use `bess esios-catalog --search ...`.
-# pub_rule types:
-#   market_results   - published at the results time of `market` (see markets:)
-#   day_offset       - published at local `time` on delivery day + `day_offset`
-#   after_delivery   - published `minutes` after the end of each delivery period
-# `assumed: true` marks rules not backed by a document (flagged in the timeline report).
-# --------------------------------------------------------------------------------------
+# eSIOS
 esios:
   base_url: "https://api.esios.ree.es"
   chunk_days: 31
@@ -165,27 +137,19 @@ esios:
     wind_actual:         {id: 551,  unit: "MW", expect: ["eolica"],    time_trunc: fifteen_minutes, time_agg: average, pub_rule: {type: after_delivery, minutes: 60, assumed: true}}
     solar_pv_actual:     {id: 1295, unit: "MW", expect: ["solar"],     time_trunc: fifteen_minutes, time_agg: average, pub_rule: {type: after_delivery, minutes: 60, assumed: true}}
 
-# --------------------------------------------------------------------------------------
-# ENTSO-E Transparency Platform (bidding zone ES). Publication rules follow the
-# Transparency Regulation (EU 543/2013) deadlines.
-# --------------------------------------------------------------------------------------
+# ENTSO-E
 entsoe:
   country_code: ES
   chunk_days: 31
   datasets:
     da_price_entsoe:     {query: day_ahead_prices,       unit: "EUR/MWh", pub_rule: {type: market_results, market: da}}
     load_forecast_entsoe: {query: load_forecast,         unit: "MW", pub_rule: {type: day_offset, day_offset: -1, time: "10:00"}, note: "Art. 6.1(b): no later than 2h before DA gate"}
-    wind_solar_forecast_entsoe: {query: wind_and_solar_forecast, unit: "MW", pub_rule: {type: day_offset, day_offset: -1, time: "18:00"}, note: "Art. 14.1(d): by 18:00 D-1 - NOT available at the DA gate"}
+    wind_solar_forecast_entsoe: {query: wind_and_solar_forecast, unit: "MW", pub_rule: {type: day_offset, day_offset: -1, time: "18:00"}, note: "Art. 14.1(d): by 18:00 D-1 not available at the DA gate"}
     load_actual_entsoe:  {query: load,                   unit: "MW", pub_rule: {type: after_delivery, minutes: 60}}
     generation_actual_entsoe: {query: generation,        unit: "MW", pub_rule: {type: after_delivery, minutes: 60}}
   download_outages: true
 
-# --------------------------------------------------------------------------------------
-# Open-Meteo Previous Runs API: archived FORECASTS (not actuals). Variable suffix
-# `_previous_dayN` = value from the model run ~N days before the target hour.
-# Publication time = target - N days + model_delay_h.
-# lead_days 2 is available at the DA gate for every hour of D; lead 1 only for the IDAs.
-# --------------------------------------------------------------------------------------
+# Open-Meteo
 weather:
   base_url: "https://previous-runs-api.open-meteo.com/v1/forecast"
   model: best_match
