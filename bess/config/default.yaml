@@ -95,7 +95,7 @@ regimes:
   ida_start:     {date: "2024-06-14", verified: docs,      note: "new European IDAs replace MIBEL intraday sessions"}
   afrr_split:    {date: "2024-11-20", verified: data,      note: "separate up/down aFRR capacity merit order; exact day detected by `bess verify`"}
   ida_qh:        {date: "2025-03-19", verified: data,      note: "first IDA with 15-min products held 18 Mar 2025; detected from OMIE files"}
-  picasso:       {date: "2025-06-01", verified: no,        note: "Spain joins PICASSO (aFRR energy platform), June 2025; exact day to confirm"}
+  picasso:       {date: "2025-06-19", verified: docs,      note: "Red Eléctrica accession to PICASSO (ENTSO-E, 19 Jun 2025)"}
   da_qh:         {date: "2025-10-01", verified: docs,      note: "SDAC 15-min MTU go-live"}
 
 # --------------------------------------------------------------------------------------
