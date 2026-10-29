@@ -26,7 +26,7 @@ log = logging.getLogger("bess")
 
 SOURCES = ["omie", "esios", "entsoe", "weather"]
 PROBES = {
-    "omie": "https://www.omie.es/es/file-download?parents%5B0%5D=marginalpdbc&filename=marginalpdbc_20250101.1",
+    "omie": "https://www.omie.es/es/file-download?parents=marginalpdbc&filename=marginalpdbc_20250101.1",
     "esios": "https://api.esios.ree.es/indicators",
     "entsoe": "https://web-api.tp.entsoe.eu/api",
     "weather": "https://previous-runs-api.open-meteo.com/v1/forecast?latitude=40.4&longitude=-3.7&hourly=temperature_2m_previous_day1&past_days=1&forecast_days=1",

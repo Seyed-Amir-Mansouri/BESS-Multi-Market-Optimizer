@@ -161,7 +161,7 @@ class OmieDownloader:
         self.ocfg = cfg["omie"]
 
     def url(self, parent: str, filename: str) -> str:
-        return f"{self.ocfg['base_url']}?parents%5B0%5D={parent}&filename={filename}"
+        return f"{self.ocfg['base_url']}?parents={parent}&filename={filename}"
 
     def _dir(self, parent: str) -> Path:
         d = self.store.raw_dir / SOURCE / parent
