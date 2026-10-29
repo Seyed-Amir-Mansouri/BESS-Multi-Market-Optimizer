@@ -1,9 +1,4 @@
-"""ENTSO-E Transparency Platform via entsoe-py. Requires ENTSOE_API_KEY in the environment.
-
-Used for load, generation and outages, and as a cross-check of OMIE day-ahead prices.
-Query results are cached as parquet under raw/entsoe/<key>/ so a re-run only fetches what
-is missing or still recent.
-"""
+"""ENTSO-E Transparency Platform client."""
 from __future__ import annotations
 
 import logging
@@ -129,10 +124,7 @@ class EntsoeDownloader:
         return counts
 
     def download_outages(self, start: date, end: date) -> int:
-        """Unavailability of generation units -> events table `entsoe_outages`.
-
-        The document creation time is the real publication time of each outage notice.
-        """
+        """Unavailability of generation units -> events table `entsoe_outages`."""
         from entsoe.exceptions import NoMatchingDataError
         frames = []
         for a, b in chunks(start, end, self.ecfg["chunk_days"]):

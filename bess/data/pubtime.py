@@ -1,11 +1,4 @@
-"""Publication-time rules: when each record became public (UTC).
-
-The backtest clock may only use records with published_at <= decision time. Sources rarely
-stamp historical values with their real publication time, so most times are derived from
-documented market timetables (`rule`) or, where no document backs the rule, from an
-explicit assumption (`rule:assumed`). Records whose file carries a real issue time use it
-(`file_header`).
-"""
+"""Publication-time rules: when each record became public (UTC)."""
 from __future__ import annotations
 
 import pandas as pd
@@ -27,12 +20,7 @@ def _per_day(days: pd.Series, fn) -> pd.Series:
 
 def apply_rule(cfg: Config, rule: dict, delivery_start: pd.Series, delivery_end: pd.Series,
                anchor_day: pd.Series | None = None) -> tuple[pd.Series, str]:
-    """Return (published_at UTC series, pub_source label) for records under `rule`.
-
-    anchor_day: local day the rule is anchored to (defaults to each record's delivery day).
-    OMIE intraday files pass their session's file date so all rows of one auction share
-    one publication time.
-    """
+    """Return (published_at UTC series, pub_source label) for records under `rule`."""
     days = anchor_day if anchor_day is not None else delivery_day(delivery_start, cfg.tz)
     days = pd.Series(days.to_numpy(), index=delivery_start.index)
     kind = rule["type"]

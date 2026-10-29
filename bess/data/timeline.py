@@ -1,11 +1,4 @@
-"""Publication-time timeline: what is known, and up to which delivery time, at each gate.
-
-For every series and every market gate, `gate_availability` answers: at the gate for
-delivery day D, how far does published data of this series reach (in hours relative to
-D 00:00 local)? E.g. +24 = all of D is known (a forecast for D, or D's own DA price at the
-IDA1 gate); -11 = data only up to D-1 13:00 (a real-time measurement at the DA gate).
-This is the contract the Phase 3 feature builder must respect.
-"""
+"""Publication-time timeline per gate."""
 from __future__ import annotations
 
 from datetime import timedelta
@@ -39,11 +32,7 @@ def series_summary(store: Store) -> pd.DataFrame:
 
 
 def gate_availability(store: Store, cfg: Config, days: list | None = None, sample: int = 120) -> pd.DataFrame:
-    """Median horizon (h from D 00:00 local) of published data per series at each gate.
-
-    days: delivery days to evaluate (default: the last `sample` days present in the store).
-    Returns columns: series, gate, horizon_h_median, full_day_share, n_days.
-    """
+    """Median horizon (h from D 00:00 local) of published data per series at each gate."""
     con = store.connect()
     data = con.execute("SELECT series, delivery_end, published_at FROM records").df()
     con.close()

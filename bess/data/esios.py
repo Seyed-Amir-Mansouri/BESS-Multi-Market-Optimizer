@@ -1,9 +1,4 @@
-"""REE eSIOS API (https://api.esios.ree.es). Requires ESIOS_API_KEY in the environment.
-
-Each configured indicator becomes one series (suffixed `.<geo_id>` when the indicator has
-several geographies and none is selected). Resolution is inferred per local day from the
-timestamps, so changes such as hourly -> 15-min are detected rather than assumed.
-"""
+"""REE eSIOS API client."""
 from __future__ import annotations
 
 import json
@@ -109,7 +104,7 @@ class EsiosClient:
         return r.json()
 
     def catalog(self) -> pd.DataFrame:
-        """All indicators (id, name, short_name) - stored as events table `esios_catalog`."""
+        """Indicator catalog, stored as events table `esios_catalog`."""
         data = self._get("/indicators")
         df = pd.DataFrame(data.get("indicators", []))
         keep = [c for c in ("id", "name", "short_name", "description") if c in df.columns]

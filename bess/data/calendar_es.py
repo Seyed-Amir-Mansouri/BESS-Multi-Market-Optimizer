@@ -1,8 +1,4 @@
-"""Calendar features: Spanish national holidays, weekday, DST, day length and gate times.
-
-Only nationwide holidays are included (regional ones vary by autonomous community and
-matter little for the national price). Good Friday is national; Easter Monday is regional.
-"""
+"""Calendar features: Spanish national holidays, weekday, DST, day length and gate times."""
 from __future__ import annotations
 
 from datetime import date, timedelta
@@ -19,7 +15,7 @@ FIXED = {(1, 1): "Año Nuevo", (1, 6): "Epifanía", (5, 1): "Fiesta del Trabajo"
 
 
 def easter(year: int) -> date:
-    """Gregorian Easter Sunday (anonymous Gregorian algorithm)."""
+    """Gregorian Easter Sunday."""
     a, b, c = year % 19, year // 100, year % 100
     d, e = b // 4, b % 4
     f = (b + 8) // 25

@@ -1,11 +1,4 @@
-"""Data-quality checks on the clean store.
-
-Cleaning policy (applied at parse/write time): rows without a value are dropped, exact
-duplicates (series, delivery_start, published_at) keep the latest fetch, and corrected
-OMIE file versions supersede earlier ones. Nothing is dropped for being extreme: limit
-breaches, outliers and flat runs are FLAGGED here for review, because real price spikes
-are exactly what a battery earns from.
-"""
+"""Data-quality checks on the clean store."""
 from __future__ import annotations
 
 from datetime import timedelta

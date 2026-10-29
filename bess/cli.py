@@ -1,16 +1,4 @@
-"""Command-line interface: `bess <command>`.
-
-    bess check-network                      which data hosts are reachable from here
-    bess download [omie|esios|entsoe|weather|all] [--start D] [--end D] [--force]
-    bess parse [source]                     rebuild clean records from cached raw files (offline)
-    bess esios-catalog [--search TEXT]      list eSIOS indicators (find ids for config)
-    bess calendar [--start D] [--end D]     holidays / DST / gate-time calendar
-    bess timeline                           what is known at each gate, per series
-    bess verify                             Phase-1 verifications
-    bess quality                            data quality report (HTML) + verifications
-    bess status                             store contents
-    bess export-duckdb [path]               persistent DuckDB file with views
-"""
+"""Command-line interface."""
 from __future__ import annotations
 
 import argparse

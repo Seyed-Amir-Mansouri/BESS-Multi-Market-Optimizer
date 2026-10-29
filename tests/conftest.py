@@ -1,4 +1,4 @@
-"""Shared fixtures. Test inputs are synthetic files written in the real source formats."""
+"""Shared fixtures."""
 from __future__ import annotations
 
 import io

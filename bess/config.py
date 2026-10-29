@@ -1,4 +1,4 @@
-"""Configuration loading: packaged default.yaml deep-merged with an optional user YAML."""
+"""Configuration loading."""
 from __future__ import annotations
 
 import copy
@@ -73,6 +73,6 @@ def load_config(path: str | os.PathLike | None = None, base_dir: str | os.PathLi
 
 
 def secret(source: str) -> str | None:
-    """API key for `source` from the environment (never from config files)."""
+    """API key for `source` from the environment."""
     value = os.environ.get(SECRET_ENV[source], "").strip()
     return value or None

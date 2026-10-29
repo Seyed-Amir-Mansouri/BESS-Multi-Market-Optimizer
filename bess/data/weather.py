@@ -1,10 +1,4 @@
-"""Open-Meteo Previous Runs API: archived weather FORECASTS as they were issued (not actuals).
-
-Variable `<var>_previous_dayN` holds, for each target hour, the value forecast by the model
-run about N days earlier. Publication time = target - N days + model_delay_h (an assumption,
-labelled `rule:assumed`). With lead 2 every hour of D is public before the DA gate (D-1
-12:00); lead 1 is only usable at the intraday gates.
-"""
+"""Open-Meteo Previous Runs API: archived weather forecasts."""
 from __future__ import annotations
 
 import json

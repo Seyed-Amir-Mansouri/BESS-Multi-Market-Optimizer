@@ -1,19 +1,4 @@
-"""Parquet + DuckDB store.
-
-Layout under data_dir:
-    raw/<source>/...                 original downloaded files (re-parseable, makes downloads resumable)
-    clean/<dataset>/<YYYY-MM>.parquet long-format time series, partitioned by delivery month (UTC)
-    events/<name>.parquet            non-time-series tables (outages, eSIOS catalog, ...)
-
-Every time-series record carries its delivery period AND its publication time:
-
-    source, dataset, series, delivery_start, delivery_end, resolution_min,
-    value, unit, published_at, pub_source, fetched_at
-
-A (series, delivery_start) can have several versions with different published_at (e.g. a
-forecast re-issued later); `load(as_of=t)` returns, per period, the latest version
-published at or before t - the no-lookahead view used by the backtest clock.
-"""
+"""Parquet + DuckDB store."""
 from __future__ import annotations
 
 import os
@@ -46,7 +31,7 @@ def normalize(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _to_us(df: pd.DataFrame) -> pd.DataFrame:
-    """Parquet files hold microsecond UTC timestamps (DuckDB's native TIMESTAMPTZ)."""
+    """Convert timestamps to microsecond UTC."""
     out = df.copy()
     for c in TS_COLS:
         out[c] = out[c].astype("datetime64[us, UTC]")
@@ -72,7 +57,7 @@ class Store:
 
     # ---------------------------------------------------------------- time series
     def write(self, df: pd.DataFrame) -> int:
-        """Upsert records; returns number of rows written. Idempotent."""
+        """Upsert records and return the number of rows written."""
         if df is None or df.empty:
             return 0
         df = normalize(df)
@@ -126,7 +111,7 @@ class Store:
         return con
 
     def export_duckdb(self, path: str | os.PathLike) -> Path:
-        """Persistent DuckDB file with views (for interactive SQL, e.g. DBeaver / duckdb CLI)."""
+        """Persistent DuckDB file with views."""
         path = Path(path)
         if path.exists():
             path.unlink()
@@ -143,12 +128,7 @@ class Store:
     def load(self, series: str | list[str] | None = None, dataset: str | None = None,
              start: pd.Timestamp | str | None = None, end: pd.Timestamp | str | None = None,
              as_of: pd.Timestamp | str | None = None, latest: bool = True, qh: bool = False) -> pd.DataFrame:
-        """Load records with delivery_start in [start, end).
-
-        as_of:  only records published at or before this instant (no-lookahead).
-        latest: keep one version per (series, delivery_start): the latest published one.
-        qh:     convert to 15-min resolution (hourly expanded, sub-15-min aggregated).
-        """
+        """Load records with delivery_start in [start, end)."""
         scan = self._scan(dataset)
         if scan is None:
             return pd.DataFrame(columns=COLUMNS)

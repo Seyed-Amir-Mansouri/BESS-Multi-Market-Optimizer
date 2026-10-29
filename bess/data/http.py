@@ -1,4 +1,4 @@
-"""Shared HTTP session: retries with exponential backoff, timeouts, polite pacing."""
+"""Shared HTTP session with retries and timeouts."""
 from __future__ import annotations
 
 import logging
@@ -39,7 +39,7 @@ class Http:
 
 
 def check_reachable(url: str, timeout: float = 20) -> tuple[bool, str]:
-    """Network probe used by `bess check-network`. Any HTTP answer counts as reachable."""
+    """Network probe for `bess check-network`."""
     try:
         r = requests.get(url, timeout=timeout)
         return True, f"HTTP {r.status_code}"

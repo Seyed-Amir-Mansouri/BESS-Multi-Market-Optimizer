@@ -1,9 +1,4 @@
-"""Time helpers. All stored timestamps are UTC; OMIE periods and gate times are Spanish local time.
-
-Period numbering: period p (1-based) of local day D starts at local midnight of D (as an
-absolute instant) + (p-1) * resolution. This is correct across DST changes: a quarter-hour
-day has 92 periods in spring, 96 normally and 100 in autumn (23/24/25 for hourly days).
-"""
+"""Time helpers."""
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
@@ -62,7 +57,7 @@ def delivery_day(ts_utc: pd.Series | pd.DatetimeIndex, tz: str) -> pd.Series:
 
 
 def resolution_from_max_period(max_period: int) -> int:
-    """OMIE files: >25 periods in a day means quarter-hours (92/96/100), else hours (23/24/25)."""
+    """Resolution in minutes from the highest period number of a day."""
     return 15 if max_period > 25 else 60
 
 
@@ -79,11 +74,7 @@ def infer_resolution_min(ts_utc: pd.Series) -> int | None:
 
 
 def per_day_resolution(ts_utc: pd.Series, tz: str, fallback: int = 60) -> pd.Series:
-    """Resolution (minutes) of each timestamp, inferred from the spacing within its local day.
-
-    Detects resolution changes (e.g. hourly -> 15-min) at day granularity. Days with a
-    single timestamp get `fallback`.
-    """
+    """Resolution (minutes) of each timestamp, inferred from the spacing within its local day."""
     ts = pd.Series(pd.to_datetime(ts_utc, utc=True))
     days = delivery_day(ts, tz)
     days.index = ts.index
@@ -96,13 +87,7 @@ def per_day_resolution(ts_utc: pd.Series, tz: str, fallback: int = 60) -> pd.Ser
 
 
 def to_quarter_hour(df: pd.DataFrame) -> pd.DataFrame:
-    """Bring long-format records to 15-min resolution.
-
-    Coarser records (e.g. hourly) are expanded to equal quarter-hours: intensive values
-    (prices, MW, %) are repeated, extensive values (MWh) are split evenly. Finer records
-    (e.g. 5-min) are aggregated: mean for intensive, sum for extensive. Publication times
-    are carried over unchanged (an expanded quarter-hour is known when its hour was known).
-    """
+    """Bring long-format records to 15-min resolution."""
     if df.empty:
         return df.copy()
     out = []

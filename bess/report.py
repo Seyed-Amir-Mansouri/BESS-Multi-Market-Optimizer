@@ -1,4 +1,4 @@
-"""Self-contained HTML reports (no external assets; inline CSS and SVG charts)."""
+"""HTML reports."""
 from __future__ import annotations
 
 import html
@@ -75,7 +75,7 @@ def table(df: pd.DataFrame, fmt: dict | None = None, raw_cols: set | None = None
 
 
 def line_chart(data: pd.DataFrame, x: str, series: list[str], y_label: str = "", width: int = 1100, height: int = 300) -> str:
-    """Inline SVG line chart; x is categorical (e.g. months), one line per column in `series`."""
+    """Inline SVG line chart."""
     series = [s for s in series if s in data.columns]
     if data.empty or not series:
         return '<p class="muted">No data.</p>'

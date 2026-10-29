@@ -1,13 +1,4 @@
-"""Phase-1 verifications.
-
-Each check returns a row: item, question, finding, status, evidence. Status values:
-    data       - established from the downloaded data
-    docs       - from an official document (recorded in config)
-    secondary  - from a secondary source only
-    mismatch   - data contradicts the config: fix the config
-    unverified - no evidence yet
-    no data    - the series needed for the check is not in the store
-"""
+"""Phase-1 verifications."""
 from __future__ import annotations
 
 import logging

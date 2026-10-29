@@ -1,18 +1,4 @@
-"""OMIE public files: day-ahead (marginalpdbc) and intraday-auction (marginalpibc) prices.
-
-File formats (semicolon separated, latin-1):
-    marginalpdbc_YYYYMMDD.v        header 'MARGINALPDBC;', rows  YYYY;MM;DD;period;price_PT;price_ES;   ends with '*'
-    marginalpibc_YYYYMMDDSS.v      same layout, SS = auction session (01..03 for IDA1..IDA3)
-    curva_pbc_uof_YYYYMMDD.v       DA aggregate supply/demand curves (optional, experimental parser)
-
-Periods are local-time hours (23/24/25 per day) or, after the 15-min switch, quarter-hours
-(92/96/100). The resolution is detected per file and day from the number of periods - never
-from a hard-coded date - so `bess verify` can report the actual switch dates.
-
-The date in an intraday file name is the delivery day D of that session; IDA1/IDA2 for D are
-held on D-1, IDA3 on D. All rows of one file share one publication time (that auction's
-results time from config).
-"""
+"""OMIE public files: day-ahead (marginalpdbc) and intraday-auction (marginalpibc) prices."""
 from __future__ import annotations
 
 import io
@@ -101,10 +87,7 @@ def _num_es(s: str) -> float:
 
 
 def parse_curve(text: str) -> tuple[pd.DataFrame, pd.Timestamp | None]:
-    """Experimental parser for curva_pbc_uof files -> (steps, issue time from header or None).
-
-    Returns columns: period, day, side ('C' buy / 'V' sell), energy, price, status ('O' offered / 'C' matched).
-    """
+    """Parse a curva_pbc_uof file into steps and issue time."""
     lines = text.splitlines()
     issued = None
     m = re.search(r"Fecha Emisi[oó]n\s*:\s*(\d{2}/\d{2}/\d{4})\s*-\s*(\d{2}:\d{2})", text[:500])
@@ -272,7 +255,7 @@ class OmieDownloader:
         return self.parse(start, end)
 
     def parse(self, start: date, end: date) -> dict:
-        """(Re)build clean records from raw files in [start, end]."""
+        """Rebuild clean records from raw files in [start, end]."""
         counts = {}
         fetched = pd.Timestamp.now(tz="UTC")
         recs = []

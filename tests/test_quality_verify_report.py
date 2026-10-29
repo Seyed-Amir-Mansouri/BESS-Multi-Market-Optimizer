@@ -1,4 +1,4 @@
-"""End-to-end over a synthetic store: quality checks, Phase-1 verifications, HTML report."""
+"""Quality checks, verifications and report on a synthetic store."""
 from datetime import date, timedelta
 
 import pandas as pd
@@ -14,8 +14,7 @@ from conftest import marginal_text
 
 @pytest.fixture
 def filled(cfg, store):
-    """DA hourly in late Sep 2025, 15-min from 1 Oct; one day missing; one price above the limit;
-    IDA1/IDA3 15-min with IDA3 covering only 12:00-24:00."""
+    """Synthetic store with DA, IDA1 and IDA3 prices."""
     recs = []
     for i in range(20):
         d = date(2025, 9, 22) + timedelta(days=i)
