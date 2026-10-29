@@ -94,8 +94,9 @@ def check_series(cfg: Config, series: str, g: pd.DataFrame, revisions: int = 0) 
     m = market_of(series)
     lim = cfg["markets"][m]["price_limits"] if m else {}
     lo, hi = lim.get("min"), lim.get("max")
-    oob = g[((g["value"] < lo) if lo is not None else False) | ((g["value"] > hi) if hi is not None else False)]
-    at_limit = g[((g["value"] <= lo) if lo is not None else False) | ((g["value"] >= hi) if hi is not None else False)]
+    none = pd.Series(False, index=g.index)
+    oob = g[((g["value"] < lo) if lo is not None else none) | ((g["value"] > hi) if hi is not None else none)]
+    at_limit = g[((g["value"] <= lo) if lo is not None else none) | ((g["value"] >= hi) if hi is not None else none)]
     month = g["delivery_start"].dt.strftime("%Y-%m")
     med = g.groupby(month)["value"].transform("median")
     mad = g.groupby(month)["value"].transform(lambda s: (s - s.median()).abs().median()) * 1.4826
