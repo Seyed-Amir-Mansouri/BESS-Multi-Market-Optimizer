@@ -1,4 +1,4 @@
-# BESS Multi-Market Optimizer - Spanish multi-market BESS optimization tool
+# Integrated Battery Trading and Revenue Optimization Tool for Day-Ahead, Intraday, and Balancing Markets
 # Default configuration. Override any key with your own YAML via `bess --config my.yaml ...`
 # (deep-merged on top of this file). Secrets are NEVER stored here: they are read from
 # the environment variables ESIOS_API_KEY and ENTSOE_API_KEY.
@@ -11,7 +11,7 @@
 # `bess verify` re-checks the data-verifiable items and prints the result.
 
 project:
-  name: "BESS Multi-Market Optimizer"
+  name: "Integrated Battery Trading and Revenue Optimization Tool for Day-Ahead, Intraday, and Balancing Markets"
   timezone: Europe/Madrid
 
 paths:
