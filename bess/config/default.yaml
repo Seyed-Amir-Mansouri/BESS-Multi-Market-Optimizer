@@ -81,13 +81,13 @@ markets:
     verified: {gate: docs, results: no, coverage: docs, price_limits: docs}
   afrr_capacity:
     label: "aFRR capacity (REE band market)"
-    gate: {day_offset: -1, time: "16:00"}
+    gate: {day_offset: -1, time: "17:00"}
     results: {day_offset: -1, time: "17:30"}
     coverage: {from: "00:00", to: "24:00"}
     price_limits: {min: 0.0, max: null}
     verified:
-      gate: secondary
-      results: no
+      gate: docs
+      results: docs
       resolution: no
 
 # Market-design regime boundaries (delivery dates). Used to split reports by period.
