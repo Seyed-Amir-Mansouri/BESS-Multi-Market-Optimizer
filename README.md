@@ -39,11 +39,11 @@ On macOS/Linux the steps are the same, except you use `python3 -m venv .venv` an
 ## Running Phase 1
 
 ```powershell
-bess download all                 # OMIE, eSIOS, ENTSO-E, Open-Meteo from data.start (2024-01-01) to today
-bess calendar                     # holidays / DST / gate-time table
-bess timeline                     # what is known, up to when, at each gate
-bess verify                       # Phase-1 verifications (prints a table)
-bess quality                      # reports/data_quality.html + series_checks.csv + verifications.csv
+bess download all
+bess calendar
+bess timeline
+bess verify
+bess quality
 ```
 
 Other useful commands:
