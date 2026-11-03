@@ -204,7 +204,7 @@ def build_quality_report(store: Store, cfg: Config, out_path: Path, esios_client
         c = checks.copy()
         c["completeness"] = c["completeness_pct"].map(_completeness_badge)
         cols = ["series", "unit", "first_day", "last_day", "completeness", "missing_days", "missing_day_ranges",
-                "partial_days", "resolution_changes", "revised_periods", "out_of_limits", "at_limit", "outliers_z8",
+                "partial_days", "resolution_changes", "revised_periods", "filled_periods", "out_of_limits", "at_limit", "outliers_z8",
                 "longest_flat_h", "min", "mean", "max"]
         for ds, g in c.groupby("dataset"):
             b.append(f"<h3>{esc(ds)}</h3>")
@@ -223,7 +223,7 @@ def build_quality_report(store: Store, cfg: Config, out_path: Path, esios_client
     else:
         b.append('<p class="muted">No data.</p>')
     b.append("<h3>aFRR prices by period and regime</h3>")
-    b.append('<p class="muted">aFRR capacity prices fell sharply (~26 to ~13 to ~9 EUR/MW/h), so every result is reported by period.</p>')
+    b.append('<p class="muted">Mean aFRR prices per half-year and regime.</p>')
     b.append(table(afrr_periods.reset_index() if not afrr_periods.empty else afrr_periods))
 
     b.append("<h2>5. Source inventory</h2>")

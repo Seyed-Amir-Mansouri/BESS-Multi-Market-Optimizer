@@ -149,7 +149,8 @@ class EsiosClient:
                 log.warning("eSIOS %s: no indicator id configured - skipped (see `bess esios-catalog`)", key)
                 continue
             recs = []
-            for a, b in chunks(start, end, self.cfg["esios"]["chunk_days"]):
+            first = max(start, date.fromisoformat(spec["start"])) if spec.get("start") else start
+            for a, b in chunks(first, end, self.cfg["esios"]["chunk_days"]):
                 try:
                     payload = self.fetch_raw(key, spec, a, b, force)
                 except Exception as e:

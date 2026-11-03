@@ -170,11 +170,13 @@ class Store:
         return df.pivot_table(index="delivery_start", columns="series", values="value", aggfunc="last")
 
     # ---------------------------------------------------------------- event tables
-    def write_events(self, name: str, df: pd.DataFrame, key: list[str] | None = None) -> int:
+    def write_events(self, name: str, df: pd.DataFrame, key: list[str] | None = None, replace: bool = False) -> int:
+        path = self.events_dir / f"{name}.parquet"
+        if replace and path.exists():
+            path.unlink()
         if df is None or df.empty:
             return 0
         self.events_dir.mkdir(parents=True, exist_ok=True)
-        path = self.events_dir / f"{name}.parquet"
         if path.exists():
             df = pd.concat([pd.read_parquet(path), df], ignore_index=True)
         df = df.drop_duplicates(subset=key, keep="last") if key else df.drop_duplicates(keep="last")

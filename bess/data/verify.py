@@ -194,7 +194,9 @@ def check_config_facts(cfg: Config) -> list[dict]:
 
 def check_cross_sources(store: Store) -> list[dict]:
     rows = []
-    for a, b in (("da_price_es", "da_price_esios"), ("da_price_es", "da_price_entsoe")):
+    for a, b in (("da_price_es", "da_price_esios"), ("da_price_es", "da_price_entsoe"),
+                 ("ida1_price_es", "ida1_price_esios"), ("ida2_price_es", "ida2_price_esios"),
+                 ("ida3_price_es", "ida3_price_esios")):
         q = f"Do {a} (OMIE) and {b} agree?"
         r = cross_check(store, a, b)
         if not r or not r.get("overlap_periods"):
@@ -207,9 +209,26 @@ def check_cross_sources(store: Store) -> list[dict]:
     return rows
 
 
+def check_unavailable(store: Store, cfg: Config) -> list[dict]:
+    ev = store.read_events("market_unavailable")
+    fills = store.read_events("fills")
+    rows = []
+    for market in cfg["fill"]["unavailable"]:
+        q = f"{market}: delivery days without a published result in any source"
+        days = ev.loc[ev["market"] == market, "day"].tolist() if not ev.empty else []
+        shown = ", ".join(days[:6]) + (" ..." if len(days) > 6 else "")
+        rows.append(_row(f"unavailable_{market}", q, f"{len(days)} days" + (f": {shown}" if days else ""), "data"))
+    for series in cfg["fill"]["from"]:
+        q = f"{series}: days filled from another source"
+        f = fills[fills["series"] == series] if not fills.empty else fills
+        txt = ", ".join(f"{r.day} from {r.source}" for r in f.itertuples()) if not f.empty else "none"
+        rows.append(_row(f"filled_{series}", q, txt, "data"))
+    return rows
+
+
 def run_verifications(store: Store, cfg: Config, esios_client=None) -> pd.DataFrame:
     rows = []
-    for fn in (check_qh_switch, check_ida_coverage, check_afrr, check_price_limits):
+    for fn in (check_qh_switch, check_ida_coverage, check_afrr, check_price_limits, check_unavailable):
         try:
             rows += fn(store, cfg)
         except Exception as e:

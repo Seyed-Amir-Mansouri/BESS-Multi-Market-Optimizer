@@ -104,6 +104,7 @@ def check_series(cfg: Config, series: str, g: pd.DataFrame, revisions: int = 0) 
         "missing_days": len(missing_days), "missing_day_ranges": ", ".join(_ranges(missing_days)[:8]),
         "partial_days": len(partial_days), "partial_day_examples": ", ".join(str(d) for d in partial_days[:5]),
         "revised_periods": revisions,
+        "filled_periods": int(g["pub_source"].astype(str).str.startswith("fill:").sum()),
         "out_of_limits": len(oob), "at_limit": len(at_limit),
         "outliers_z8": outliers, "longest_flat_h": round(_longest_flat_h(g), 2),
         "min": float(g["value"].min()), "mean": float(g["value"].mean()), "max": float(g["value"].max()),

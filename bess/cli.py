@@ -96,6 +96,19 @@ def cmd_parse(cfg, args):
     return 0
 
 
+def cmd_fill(cfg, args):
+    from .data.fill import run_fill
+    out = run_fill(_store(cfg), cfg)
+    fills, unavailable = out["fills"], out["unavailable"]
+    print(f"filled days: {len(fills)}")
+    if not fills.empty:
+        print(fills.to_string(index=False))
+    print(f"values outside physical limits replaced: {out['clipped']}")
+    print("unavailable days per market:")
+    print(unavailable.groupby("market").size().to_string() if not unavailable.empty else "none")
+    return 0
+
+
 def cmd_esios_catalog(cfg, args):
     from .data.esios import EsiosClient, strip_accents
     store = _store(cfg)
@@ -206,6 +219,8 @@ def build_parser() -> argparse.ArgumentParser:
     pa.add_argument("source", nargs="?", default="all", choices=SOURCES + ["all"])
     pa.add_argument("--start"); pa.add_argument("--end")
     pa.set_defaults(fn=cmd_parse)
+
+    sub.add_parser("fill", help="fill gaps and list unavailable market days").set_defaults(fn=cmd_fill)
 
     c = sub.add_parser("esios-catalog", help="list/search eSIOS indicators")
     c.add_argument("--search"); c.add_argument("--refresh", action="store_true")

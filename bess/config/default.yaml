@@ -122,6 +122,9 @@ esios:
   chunk_days: 31
   indicators:
     da_price_esios:      {id: 600,  geo_ids: [3], unit: "EUR/MWh", expect: ["diario"],                 pub_rule: {type: market_results, market: da}, role: "cross-check of OMIE DA"}
+    ida1_price_esios:    {id: 612,  geo_ids: [3], unit: "EUR/MWh", start: "2024-06-14", expect: ["intradiario", "sesion 1"], pub_rule: {type: market_results, market: ida1}, role: "cross-check of OMIE IDA1"}
+    ida2_price_esios:    {id: 613,  geo_ids: [3], unit: "EUR/MWh", start: "2024-06-14", expect: ["intradiario", "sesion 2"], pub_rule: {type: market_results, market: ida2}, role: "cross-check of OMIE IDA2"}
+    ida3_price_esios:    {id: 614,  geo_ids: [3], unit: "EUR/MWh", start: "2024-06-14", expect: ["intradiario", "sesion 3"], pub_rule: {type: market_results, market: ida3}, role: "cross-check of OMIE IDA3"}
     afrr_band_price_up:  {id: 2130, unit: "EUR/MW",  expect: ["precio", "reserva", "secundaria", "subir"], pub_rule: {type: market_results, market: afrr_capacity}, role: "from 2024-11-20"}
     afrr_band_price_down: {id: 634, unit: "EUR/MW",  expect: ["precio", "reserva", "secundaria", "bajar"], pub_rule: {type: market_results, market: afrr_capacity}, role: "single band price for both directions before 2024-11-20"}
     afrr_band_up_mw:     {id: 632,  unit: "MW",      expect: ["secundaria", "subir"],                   pub_rule: {type: market_results, market: afrr_capacity}}
@@ -167,3 +170,19 @@ weather:
     zaragoza:  {lat: 41.65, lon: -0.89, role: wind}
     burgos:    {lat: 42.34, lon: -3.70, role: wind}
     a_coruna:  {lat: 43.36, lon: -8.41, role: wind}
+
+# Fill
+fill:
+  from:
+    da_price_es: [da_price_esios, da_price_entsoe]
+    ida1_price_es: [ida1_price_esios]
+    ida2_price_es: [ida2_price_esios]
+    ida3_price_es: [ida3_price_esios]
+  physical_limits:
+    shortwave_radiation: {min: 0.0, max: 1361.0}
+  unavailable:
+    ida1: [ida1_price_es]
+    ida2: [ida2_price_es]
+    ida3: [ida3_price_es]
+    afrr_capacity: [afrr_band_price_up, afrr_band_price_down, afrr_band_up_mw, afrr_band_down_mw]
+    afrr_energy: [afrr_energy_price_up, afrr_energy_price_down, afrr_energy_up_mwh, afrr_energy_down_mwh]
