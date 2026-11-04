@@ -109,6 +109,24 @@ def cmd_fill(cfg, args):
     return 0
 
 
+def cmd_backtest(cfg, args):
+    from .backtest import run
+    start = date.fromisoformat(args.start) if args.start else None
+    end = date.fromisoformat(args.end) if args.end else None
+    for name in (["pf", "det"] if args.strategy == "all" else [args.strategy]):
+        out = run(cfg, _store(cfg), name, start, end)
+        kept = out[~out["excluded"]]
+        print(f"{name}: {len(out)} days, profit {kept['profit'].sum():,.0f} EUR excluding {int(out['excluded'].sum())} days")
+    return 0
+
+
+def cmd_report(cfg, args):
+    from .report import build_backtest_report
+    path = build_backtest_report(cfg, args.out or (cfg.report_dir / "backtest.html"))
+    print(f"report written: {path}")
+    return 0
+
+
 def cmd_esios_catalog(cfg, args):
     from .data.esios import EsiosClient, strip_accents
     store = _store(cfg)
@@ -221,6 +239,15 @@ def build_parser() -> argparse.ArgumentParser:
     pa.set_defaults(fn=cmd_parse)
 
     sub.add_parser("fill", help="fill gaps and list unavailable market days").set_defaults(fn=cmd_fill)
+
+    bt = sub.add_parser("backtest", help="run the chronological backtest")
+    bt.add_argument("--strategy", default="all", choices=["pf", "det", "all"])
+    bt.add_argument("--start"); bt.add_argument("--end")
+    bt.set_defaults(fn=cmd_backtest)
+
+    r = sub.add_parser("report", help="write the HTML backtest report")
+    r.add_argument("--out")
+    r.set_defaults(fn=cmd_report)
 
     c = sub.add_parser("esios-catalog", help="list/search eSIOS indicators")
     c.add_argument("--search"); c.add_argument("--refresh", action="store_true")

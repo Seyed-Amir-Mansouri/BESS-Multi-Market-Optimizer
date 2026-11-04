@@ -2,7 +2,9 @@
 
 Optimizes a battery's participation in the Spanish day-ahead, intraday-auction (IDA1–3) and aFRR capacity markets.
 
-**This delivery is Phase 1 (Data):** downloaders, cleaning, the publication-time timeline, the data quality report and the Phase-1 verifications.
+**Phase 1 (Data):** downloaders, cleaning, gap filling, the publication-time timeline, the data quality report and the Phase-1 verifications.
+
+**Phase 2 (Simulator and baselines):** battery model, step bids and clearing, market simulator, perfect foresight and a deterministic optimizer with naive forecasts.
 
 ---
 
@@ -40,6 +42,7 @@ On macOS/Linux the steps are the same, except you use `python3 -m venv .venv` an
 
 ```powershell
 bess download all
+bess fill
 bess calendar
 bess timeline
 bess verify
@@ -58,6 +61,20 @@ Other useful commands:
 | `bess --config my.yaml ...` | your YAML deep-merged over `bess/config/default.yaml` |
 
 Downloads are resumable and idempotent. Raw files are cached under `data_store/raw/`, so a re-run only fetches what is missing or still recent (the last 7 days). The first full download takes about 1.5 hours, mostly because OMIE has no yearly zips and its daily files are fetched politely, one by one.
+
+## Running Phase 2
+
+```powershell
+bess backtest
+bess report
+```
+
+| Command | What it does |
+|---|---|
+| `bess backtest --strategy pf` | perfect foresight only |
+| `bess backtest --strategy det --start 2025-01-01 --end 2025-03-31` | deterministic strategy, one window |
+
+Results are written to `data_store/backtest/` and the report to `reports/backtest.html`.
 
 ## Data model
 
@@ -121,9 +138,17 @@ bess/
   data/timeline.py         what is known at each gate
   data/quality.py          completeness, gaps, limits, outliers, monthly stats, cross-checks
   data/verify.py           Phase-1 verifications
-  report.py                self-contained HTML report
+  data/fill.py             gap filling and unavailable market days
+  battery.py               battery and fee parameters
+  bids.py                  step bids and pay-as-clear clearing
+  optim.py                 daily LP for positions and aFRR band
+  market_simulator.py      market data, gate sequence, settlement
+  forecast.py              naive forecasts
+  strategies/              perfect foresight, deterministic
+  backtest.py              chronological backtest
+  report.py                HTML reports
   cli.py                   `bess` command
-tests/                     pytest: parsers, DST, store, no-lookahead, quality, report
+tests/                     pytest: parsers, DST, store, no-lookahead, quality, report, simulator
 ```
 
 ## Known limitations (Phase 1)

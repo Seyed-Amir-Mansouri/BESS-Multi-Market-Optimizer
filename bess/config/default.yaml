@@ -7,6 +7,7 @@ project:
 paths:
   data_dir: data_store
   report_dir: reports
+  backtest_dir: data_store/backtest
 
 data:
   start: "2024-01-01"
@@ -20,6 +21,8 @@ data:
 
 backtest:
   start: "2024-06-14"
+  exclude:
+    - {from: "2025-04-28", to: "2025-05-04", note: "Iberian blackout week"}
 
 battery:
   power_mw: 5.0
@@ -31,6 +34,7 @@ battery:
   soc_initial_frac: 0.5
   degradation_eur_per_mwh: 3.0
   max_cycles_per_day: 2.0
+  afrr_full_activation_h: 1.0
 
 # Markets
 markets:
@@ -170,6 +174,26 @@ weather:
     zaragoza:  {lat: 41.65, lon: -0.89, role: wind}
     burgos:    {lat: 42.34, lon: -3.70, role: wind}
     a_coruna:  {lat: 43.36, lon: -8.41, role: wind}
+
+# Simulator
+simulator:
+  series:
+    da: da_price_es
+    ida1: ida1_price_es
+    ida2: ida2_price_es
+    ida3: ida3_price_es
+    cap_up: afrr_band_price_up
+    cap_dn: afrr_band_price_down
+    sys_up: afrr_band_up_mw
+    sys_dn: afrr_band_down_mw
+    e_up: afrr_energy_price_up
+    e_dn: afrr_energy_price_down
+    act_up: afrr_energy_up_mwh
+    act_dn: afrr_energy_down_mwh
+  activation_days: 7
+  shortfall_penalty_eur_per_mwh: 100.0
+  soft_penalty_eur_per_mwh: 10000.0
+  solver_time_limit_s: 30
 
 # Fill
 fill:

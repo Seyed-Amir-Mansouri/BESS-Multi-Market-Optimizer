@@ -236,3 +236,77 @@ def build_quality_report(store: Store, cfg: Config, out_path: Path, esios_client
     checks.to_csv(out_path.with_name("series_checks.csv"), index=False)
     ver.to_csv(out_path.with_name("verifications.csv"), index=False)
     return out_path
+
+
+PARTS = ["da", "ida1", "ida2", "ida3", "afrr_capacity", "afrr_energy", "degradation", "fees", "penalty", "profit"]
+
+
+def build_backtest_report(cfg: Config, out_path: Path) -> Path:
+    """Backtest results per strategy, market, regime and month."""
+    from .backtest import STRATEGIES, load_results
+    res = {s: load_results(cfg, s) for s in STRATEGIES}
+    res = {s: r for s, r in res.items() if not r.empty}
+    power = float(cfg["battery"]["power_mw"])
+    b = [f"<h1>{esc(cfg['project']['name'])} &middot; Phase 2 backtest</h1>"]
+    if not res:
+        b.append('<p class="muted">No backtest results.</p>')
+    else:
+        any_r = next(iter(res.values()))
+        b.append(f'<p class="muted">{esc(any_r["day"].min())} to {esc(any_r["day"].max())} &middot; '
+                 f'{power:g} MW / {float(cfg["battery"]["energy_mwh"]):g} MWh &middot; '
+                 f'excluded days: {int(any_r["excluded"].sum())}</p>')
+        kept = {s: r[~r["excluded"]] for s, r in res.items()}
+        pf = kept.get("pf")
+        tiles = []
+        for s, r in kept.items():
+            years = len(r) / 365.0
+            tiles.append(f'<div class="tile"><div class="v">{r["profit"].sum():,.0f} &euro;</div><div class="l">{esc(s)} profit</div></div>')
+            tiles.append(f'<div class="tile"><div class="v">{r["profit"].sum() / years / power / 1000:,.1f} k&euro;</div><div class="l">{esc(s)} per MW-year</div></div>')
+            if pf is not None and s != "pf" and pf["profit"].sum():
+                tiles.append(f'<div class="tile"><div class="v">{r["profit"].sum() / pf["profit"].sum():.1%}</div><div class="l">{esc(s)} capture rate</div></div>')
+        b.append(f'<div class="tiles">{"".join(tiles)}</div>')
+
+        b.append("<h2>Value per market</h2>")
+        split = pd.DataFrame({s: r[PARTS].sum() for s, r in kept.items()}).reset_index().rename(columns={"index": "item"})
+        b.append(table(split, fmt={s: "{:,.0f}" for s in kept}))
+
+        b.append("<h2>Cumulative profit</h2>")
+        cum = pd.DataFrame({"day": next(iter(kept.values()))["day"].to_numpy()})
+        for s, r in kept.items():
+            cum[s] = r["profit"].cumsum().to_numpy()
+        b.append(line_chart(cum, "day", list(kept), "EUR"))
+
+        b.append("<h2>By regime</h2>")
+        reg = pd.DataFrame({f"{s} profit": r.groupby("regime", sort=False)["profit"].sum() for s, r in kept.items()})
+        reg.insert(0, "days", next(iter(kept.values())).groupby("regime", sort=False).size())
+        if pf is not None:
+            for s in kept:
+                if s != "pf":
+                    reg[f"{s} capture"] = reg[f"{s} profit"] / reg["pf profit"]
+        b.append(table(reg.reset_index(), fmt={c: ("{:.1%}" if "capture" in c else "{:,.0f}") for c in reg.columns}))
+
+        b.append("<h2>By month</h2>")
+        mon = pd.DataFrame({f"{s} profit": r.groupby(r["day"].str[:7])["profit"].sum() for s, r in kept.items()})
+        for s, r in kept.items():
+            mon[f"{s} cycles/day"] = r.groupby(r["day"].str[:7])["cycles"].mean()
+        if pf is not None:
+            for s in kept:
+                if s != "pf":
+                    mon[f"{s} capture"] = mon[f"{s} profit"] / mon["pf profit"]
+        b.append(table(mon.reset_index().rename(columns={"day": "month"}),
+                       fmt={c: ("{:.1%}" if "capture" in c else "{:,.2f}" if "cycles" in c else "{:,.0f}") for c in mon.columns}))
+
+        b.append("<h2>Operation</h2>")
+        op = pd.DataFrame({s: {"cycles per day": r["cycles"].mean(), "band up MW": r["band_up_mw"].mean(),
+                               "band down MW": r["band_dn_mw"].mean(), "shortfall MWh": r["shortfall_mwh"].sum(),
+                               "days with shortfall": float((r["shortfall_mwh"] > 1e-3).sum())}
+                           for s, r in kept.items()}).reset_index().rename(columns={"index": "item"})
+        b.append(table(op, fmt={s: "{:,.2f}" for s in kept}))
+
+        b.append("<h2>Excluded days</h2>")
+        ex = pd.DataFrame(cfg["backtest"].get("exclude") or [])
+        b.append(table(ex))
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(page("Backtest Results", "".join(b)), encoding="utf-8")
+    return out_path
