@@ -101,6 +101,8 @@ def hour_groups(cfg: Config, day: date, index: pd.DatetimeIndex) -> dict:
         qh_from = date.fromisoformat(reg["da_qh" if st == "da" else "ida_qh"]["date"])
         if day < qh_from:
             out[st] = hours
+    if day < date.fromisoformat(reg["ida_qh"]["date"]):
+        out["afrr"] = hours
     return out
 
 

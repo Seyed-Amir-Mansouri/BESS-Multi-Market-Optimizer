@@ -127,6 +127,14 @@ def solve_day(inp: DayInput, bat: Battery, fees: Fees, soft_penalty: float = 1e4
     if inp.ratio_up is not None and inp.band_fixed is None:
         q = np.clip(_clean(inp.ratio_up), 0, 1)
         lp.con([(1 - q, r_up), (-q, r_dn)], 0.0, 0.0)
+    g = inp.groups.get("afrr")
+    if g is not None and inp.band_fixed is None:
+        g = np.asarray(g)
+        first = np.array([np.flatnonzero(g == v)[0] for v in g])
+        rows = np.flatnonzero(first != np.arange(n))
+        if len(rows):
+            lp.con([(1.0, r_up[rows]), (-1.0, r_up[first[rows]])], 0.0, 0.0)
+            lp.con([(1.0, r_dn[rows]), (-1.0, r_dn[first[rows]])], 0.0, 0.0)
 
     prev = None
     pos, trades, socs = {}, {}, {}

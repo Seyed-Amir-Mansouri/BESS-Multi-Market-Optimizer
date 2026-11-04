@@ -95,6 +95,18 @@ def test_afrr_band_keeps_full_activation_headroom(cfg):
     assert np.all(plan.soc[1:] - plan.r_up * bat.reserve_h / bat.eta_d >= bat.soc_min - 1e-6)
 
 
+def test_hourly_afrr_band(cfg):
+    bat = Battery.from_config(cfg)
+    n = 96
+    inp = _day_input(n, 50 + 40 * np.sin(np.arange(n) / 7.0), {"afrr": np.repeat(np.arange(24), 4)},
+                     cap=20.0)
+    inp.cap_up = 20.0 + 10 * np.sin(np.arange(n) / 3.0)
+    plan = solve_day(inp, bat, NO_FEES)
+    for r in (plan.r_up, plan.r_dn):
+        h = r.reshape(24, 4)
+        assert np.allclose(h, h[:, :1], atol=1e-6)
+
+
 def _records(cfg, days, series, market, price):
     rows = []
     for d in days:
