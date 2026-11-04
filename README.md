@@ -6,6 +6,8 @@ Optimizes a battery's participation in the Spanish day-ahead, intraday-auction (
 
 **Phase 2 (Simulator and baselines):** battery model, step bids and clearing, market simulator, perfect foresight and a deterministic optimizer with naive forecasts.
 
+**Phase 3 (Forecasting):** walk-forward LightGBM forecasts for every market input, plugged into the deterministic optimizer.
+
 ---
 
 ## Windows setup (PowerShell)
@@ -76,6 +78,21 @@ bess report
 
 Results are written to `data_store/backtest/` and the report to `reports/backtest.html`.
 
+## Running Phase 3
+
+```powershell
+bess forecast
+bess backtest --strategy ml
+bess report
+```
+
+| Command | What it does |
+|---|---|
+| `bess forecast --target da --target ida1` | selected targets only |
+| `bess forecast --start 2025-01-01 --end 2025-06-30` | one prediction window |
+
+`bess forecast` trains one model per target and gate on past days only, retrains every `forecast.retrain_months` and writes out-of-sample predictions to `data_store/forecasts/predictions.parquet`. Strategy `ml` uses them and falls back to the naive forecast where no model exists yet. The report adds forecast accuracy against the naive forecasts.
+
 ## Data model
 
 All series share one long-format Parquet schema under `data_store/clean/<dataset>/<YYYY-MM>.parquet`:
@@ -143,8 +160,9 @@ bess/
   bids.py                  step bids and pay-as-clear clearing
   optim.py                 daily LP for positions and aFRR band
   market_simulator.py      market data, gate sequence, settlement
-  forecast.py              naive forecasts
-  strategies/              perfect foresight, deterministic
+  features.py              gate features from published data
+  forecast.py              naive and walk-forward LightGBM forecasts
+  strategies/              perfect foresight, deterministic (naive and LightGBM)
   backtest.py              chronological backtest
   report.py                HTML reports
   cli.py                   `bess` command

@@ -11,13 +11,13 @@ from .battery import Battery
 from .config import Config
 from .data.store import Store
 from .market_simulator import MarketData, Simulator
-from .strategies.deterministic import Deterministic
+from .strategies.deterministic import Deterministic, LightGBM
 from .strategies.perfect_foresight import PerfectForesight
 from .timeutils import daterange
 
 log = logging.getLogger(__name__)
 
-STRATEGIES = {"pf": PerfectForesight, "det": Deterministic}
+STRATEGIES = {"pf": PerfectForesight, "det": Deterministic, "ml": LightGBM}
 END_COLS = ["da", "ida2", "cap_dn"]
 
 

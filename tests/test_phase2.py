@@ -153,3 +153,12 @@ def test_backtest_perfect_foresight_is_upper_bound(cfg, store):
     assert pf["profit"].sum() >= det["profit"].sum() - 1e-6
     assert pf["profit"].sum() > 0
     assert (pf["soc_end"].between(0, 10)).all() and (pf["shortfall_mwh"] < 1e-6).all()
+
+
+def test_hourly_band_with_varying_ratio(cfg):
+    bat = Battery.from_config(cfg)
+    n = 96
+    inp = _day_input(n, np.full(n, 50.0), {"afrr": np.repeat(np.arange(24), 4)}, cap=20.0)
+    inp.ratio_up = 0.5 + 0.02 * np.tile([1, -1, 1, -1], 24)
+    plan = solve_day(inp, bat, NO_FEES)
+    assert plan.r_up.max() > 0.5

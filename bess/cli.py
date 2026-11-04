@@ -113,10 +113,19 @@ def cmd_backtest(cfg, args):
     from .backtest import run
     start = date.fromisoformat(args.start) if args.start else None
     end = date.fromisoformat(args.end) if args.end else None
-    for name in (["pf", "det"] if args.strategy == "all" else [args.strategy]):
+    for name in (["pf", "det", "ml"] if args.strategy == "all" else [args.strategy]):
         out = run(cfg, _store(cfg), name, start, end)
         kept = out[~out["excluded"]]
         print(f"{name}: {len(out)} days, profit {kept['profit'].sum():,.0f} EUR excluding {int(out['excluded'].sum())} days")
+    return 0
+
+
+def cmd_forecast(cfg, args):
+    from .forecast import accuracy, walk_forward
+    start = date.fromisoformat(args.start) if args.start else None
+    end = date.fromisoformat(args.end) if args.end else None
+    out = walk_forward(cfg, _store(cfg), start, end, args.target or None, log=log.info)
+    print(accuracy(out).to_string(index=False, float_format=lambda x: f"{x:,.3f}"))
     return 0
 
 
@@ -241,9 +250,14 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("fill", help="fill gaps and list unavailable market days").set_defaults(fn=cmd_fill)
 
     bt = sub.add_parser("backtest", help="run the chronological backtest")
-    bt.add_argument("--strategy", default="all", choices=["pf", "det", "all"])
+    bt.add_argument("--strategy", default="all", choices=["pf", "det", "ml", "all"])
     bt.add_argument("--start"); bt.add_argument("--end")
     bt.set_defaults(fn=cmd_backtest)
+
+    f = sub.add_parser("forecast", help="walk-forward LightGBM forecasts")
+    f.add_argument("--target", action="append")
+    f.add_argument("--start"); f.add_argument("--end")
+    f.set_defaults(fn=cmd_forecast)
 
     r = sub.add_parser("report", help="write the HTML backtest report")
     r.add_argument("--out")

@@ -56,3 +56,91 @@ def naive(md: MarketData, day, as_of: pd.Timestamp, activation_days: int = 7) ->
     for c in ("share_up", "share_dn", "e_up", "e_dn"):
         out[c] = profile(md, c, day, as_of, activation_days)
     return out
+
+
+def predictions_path(cfg):
+    p = cfg.path("forecast_dir")
+    p.mkdir(parents=True, exist_ok=True)
+    return p / "predictions.parquet"
+
+
+def load_predictions(cfg) -> pd.DataFrame:
+    p = predictions_path(cfg)
+    return pd.read_parquet(p) if p.exists() else pd.DataFrame()
+
+
+def _folds(start, end, months: int) -> list:
+    out = []
+    a = pd.Timestamp(start).to_period("M").to_timestamp().date()
+    while a <= end:
+        b = (pd.Timestamp(a) + pd.DateOffset(months=months)).date()
+        out.append((max(a, start), min(b, end + timedelta(days=1))))
+        a = b
+    return out
+
+
+def walk_forward(cfg, store, start=None, end=None, targets=None, log=None, save=True) -> pd.DataFrame:
+    """Train LightGBM per target and gate on past days only and predict each following block."""
+    from datetime import date
+
+    from lightgbm import LGBMRegressor
+
+    from .features import NS, PRICES, Panel
+    from .market_simulator import GATES
+
+    fc = cfg["forecast"]
+    start = start or date.fromisoformat(cfg["backtest"]["start"])
+    end = end or cfg.data_end()
+    md = MarketData(store, cfg, cfg.data_start(), end)
+    panel = Panel(md, store, cfg)
+    end = min(end, panel.days[-1])
+    day_col = np.repeat(panel.days, NS)
+    slot_col = np.tile(np.arange(NS), len(panel.days))
+    folds = _folds(start, end, int(fc["retrain_months"]))
+    embargo = timedelta(days=int(fc["embargo_days"]))
+    params = dict(fc["lgbm"])
+    targets = targets or list(fc["gates"])
+    rows = []
+    for gate in GATES:
+        pairs = [t for t in targets if gate in fc["gates"][t]]
+        if not pairs:
+            continue
+        full = panel.features(gate)
+        X = full.loc[:, full.notna().any()]
+        for target in pairs:
+            y = panel.val[target].ravel()
+            nv = panel.naive(target, full)
+            base = full["da_d0"].to_numpy() if target in PRICES[1:] and gate != "da" else None
+            yt = y - base if base is not None else y
+            lo, hi = (fc.get("bounds") or {}).get(target, [None, None])
+            for f0, f1 in folds:
+                te = (day_col >= f0) & (day_col < f1)
+                if not te.any():
+                    continue
+                tr = (day_col < f0 - embargo) & ~np.isnan(yt)
+                pred = np.full(te.sum(), np.nan)
+                if len(np.unique(day_col[tr])) >= int(fc["min_train_days"]):
+                    m = LGBMRegressor(**params).fit(X.loc[tr], yt[tr])
+                    pred = m.predict(X.loc[te])
+                    if base is not None:
+                        pred = pred + base[te]
+                    pred = np.clip(pred, lo if lo is not None else -np.inf, hi if hi is not None else np.inf)
+                rows.append(pd.DataFrame({"target": target, "gate": gate, "day": day_col[te].astype(str),
+                                          "slot": slot_col[te], "actual": y[te], "pred": pred, "naive": nv[te]}))
+            if log:
+                log(f"{target} @ {gate} done")
+    out = pd.concat(rows, ignore_index=True)
+    if save:
+        out.to_parquet(predictions_path(cfg), index=False)
+    return out
+
+
+def accuracy(pred: pd.DataFrame) -> pd.DataFrame:
+    """Mean absolute error of the model and the naive forecast on common rows."""
+    p = pred.dropna(subset=["actual", "pred", "naive"])
+    g = p.assign(e_m=(p["pred"] - p["actual"]).abs(), e_n=(p["naive"] - p["actual"]).abs()).groupby(["target", "gate"], sort=False)
+    out = g.agg(days=("day", "nunique"), mae_naive=("e_n", "mean"), mae_model=("e_m", "mean"),
+                rmse_naive=("e_n", lambda e: float(np.sqrt((e ** 2).mean()))),
+                rmse_model=("e_m", lambda e: float(np.sqrt((e ** 2).mean())))).reset_index()
+    out["skill"] = 1 - out["mae_model"] / out["mae_naive"]
+    return out

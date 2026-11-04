@@ -8,6 +8,7 @@ paths:
   data_dir: data_store
   report_dir: reports
   backtest_dir: data_store/backtest
+  forecast_dir: data_store/forecasts
 
 data:
   start: "2024-01-01"
@@ -210,3 +211,56 @@ fill:
     ida3: [ida3_price_es]
     afrr_capacity: [afrr_band_price_up, afrr_band_price_down, afrr_band_up_mw, afrr_band_down_mw]
     afrr_energy: [afrr_energy_price_up, afrr_energy_price_down, afrr_energy_up_mwh, afrr_energy_down_mwh]
+
+# Forecasting
+forecast:
+  retrain_months: 2
+  min_train_days: 45
+  embargo_days: 2
+  lookback_days: 21
+  spread_margin:
+    scale: 1.0
+    window_days: 28
+    lag_days: 2
+  lgbm:
+    n_estimators: 250
+    learning_rate: 0.06
+    num_leaves: 31
+    min_child_samples: 40
+    subsample: 0.8
+    subsample_freq: 1
+    colsample_bytree: 0.8
+    max_bin: 63
+    force_col_wise: true
+    n_jobs: 4
+    reg_lambda: 1.0
+    verbose: -1
+  gates:
+    da: [da]
+    ida1: [da, ida1]
+    ida2: [da, ida1, afrr_capacity, ida2]
+    ida3: [da, ida1, afrr_capacity, ida2, ida3]
+    cap_up: [da, ida1, afrr_capacity]
+    cap_dn: [da, ida1, afrr_capacity]
+    ratio_up: [da, ida1, afrr_capacity]
+    share_up: [da, ida1, afrr_capacity, ida2, ida3]
+    share_dn: [da, ida1, afrr_capacity, ida2, ida3]
+    e_up: [da, ida1, afrr_capacity, ida2, ida3]
+    e_dn: [da, ida1, afrr_capacity, ida2, ida3]
+  bounds:
+    cap_up: [0.0, null]
+    cap_dn: [0.0, null]
+    ratio_up: [0.0, 1.0]
+    share_up: [0.0, 1.0]
+    share_dn: [0.0, 1.0]
+  exogenous:
+    load_fc: [load_forecast_entsoe]
+    wind_fc: [wind_solar_forecast_entsoe.wind_onshore]
+    solar_fc: [wind_solar_forecast_entsoe.solar]
+    wx_wind_d1: [wx.a_coruna.wind_speed_100m.d1, wx.burgos.wind_speed_100m.d1, wx.zaragoza.wind_speed_100m.d1, wx.albacete.wind_speed_100m.d1]
+    wx_wind_d2: [wx.a_coruna.wind_speed_100m.d2, wx.burgos.wind_speed_100m.d2, wx.zaragoza.wind_speed_100m.d2, wx.albacete.wind_speed_100m.d2]
+    wx_rad_d1: [wx.sevilla.shortwave_radiation.d1, wx.badajoz.shortwave_radiation.d1, wx.albacete.shortwave_radiation.d1, wx.madrid.shortwave_radiation.d1]
+    wx_rad_d2: [wx.sevilla.shortwave_radiation.d2, wx.badajoz.shortwave_radiation.d2, wx.albacete.shortwave_radiation.d2, wx.madrid.shortwave_radiation.d2]
+    wx_temp_d1: [wx.madrid.temperature_2m.d1, wx.barcelona.temperature_2m.d1, wx.valencia.temperature_2m.d1, wx.sevilla.temperature_2m.d1]
+    wx_temp_d2: [wx.madrid.temperature_2m.d2, wx.barcelona.temperature_2m.d2, wx.valencia.temperature_2m.d2, wx.sevilla.temperature_2m.d2]
+    wx_cloud_d1: [wx.madrid.cloud_cover.d1, wx.sevilla.cloud_cover.d1, wx.zaragoza.cloud_cover.d1, wx.valencia.cloud_cover.d1]

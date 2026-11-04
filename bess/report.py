@@ -238,6 +238,7 @@ def build_quality_report(store: Store, cfg: Config, out_path: Path, esios_client
     return out_path
 
 
+LABELS = {"pf": "perfect foresight", "det": "naive forecasts", "ml": "LightGBM forecasts"}
 PARTS = ["da", "ida1", "ida2", "ida3", "afrr_capacity", "afrr_energy", "degradation", "fees", "penalty", "profit"]
 
 
@@ -247,7 +248,7 @@ def build_backtest_report(cfg: Config, out_path: Path) -> Path:
     res = {s: load_results(cfg, s) for s in STRATEGIES}
     res = {s: r for s, r in res.items() if not r.empty}
     power = float(cfg["battery"]["power_mw"])
-    b = [f"<h1>{esc(cfg['project']['name'])} &middot; Phase 2 backtest</h1>"]
+    b = [f"<h1>{esc(cfg['project']['name'])} &middot; Backtest</h1>"]
     if not res:
         b.append('<p class="muted">No backtest results.</p>')
     else:
@@ -256,6 +257,7 @@ def build_backtest_report(cfg: Config, out_path: Path) -> Path:
                  f'{power:g} MW / {float(cfg["battery"]["energy_mwh"]):g} MWh &middot; '
                  f'excluded days: {int(any_r["excluded"].sum())}</p>')
         kept = {s: r[~r["excluded"]] for s, r in res.items()}
+        b.append('<p class="muted">' + " &middot; ".join(f"{esc(s)}: {esc(LABELS.get(s, s))}" for s in kept) + "</p>")
         pf = kept.get("pf")
         tiles = []
         for s, r in kept.items():
@@ -302,6 +304,14 @@ def build_backtest_report(cfg: Config, out_path: Path) -> Path:
                                "days with shortfall": float((r["shortfall_mwh"] > 1e-3).sum())}
                            for s, r in kept.items()}).reset_index().rename(columns={"index": "item"})
         b.append(table(op, fmt={s: "{:,.2f}" for s in kept}))
+
+        from .forecast import accuracy, load_predictions
+        pred = load_predictions(cfg)
+        if not pred.empty:
+            b.append("<h2>Forecast accuracy</h2>")
+            b.append('<p class="muted">Walk-forward out-of-sample errors on the backtest days. Skill = 1 &minus; model MAE / naive MAE.</p>')
+            acc = accuracy(pred[pred["day"] >= any_r["day"].min()])
+            b.append(table(acc, fmt={c: "{:,.3f}" for c in ("mae_naive", "mae_model", "rmse_naive", "rmse_model")} | {"skill": "{:.1%}"}))
 
         b.append("<h2>Excluded days</h2>")
         ex = pd.DataFrame(cfg["backtest"].get("exclude") or [])

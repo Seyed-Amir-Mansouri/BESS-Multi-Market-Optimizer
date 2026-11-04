@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import numpy as np
+import pandas as pd
 from scipy.optimize import Bounds, LinearConstraint, milp
 from scipy.sparse import coo_matrix
 
@@ -126,6 +127,8 @@ def solve_day(inp: DayInput, bat: Battery, fees: Fees, soft_penalty: float = 1e4
     lp.add_cost(r_dn, -band_value[1])
     if inp.ratio_up is not None and inp.band_fixed is None:
         q = np.clip(_clean(inp.ratio_up), 0, 1)
+        if "afrr" in inp.groups:
+            q = pd.Series(q).groupby(np.asarray(inp.groups["afrr"])).transform("mean").to_numpy()
         lp.con([(1 - q, r_up), (-q, r_dn)], 0.0, 0.0)
     g = inp.groups.get("afrr")
     if g is not None and inp.band_fixed is None:
@@ -185,8 +188,10 @@ def solve_day(inp: DayInput, bat: Battery, fees: Fees, soft_penalty: float = 1e4
             lp.con(lower, bat.soc_min, np.inf)
             lp.con(upper, -np.inf, bat.soc_max)
         if band:
-            lp.con([(1.0, x), (1.0, r_up)], -np.inf, P)
-            lp.con([(1.0, x), (-1.0, r_dn)], -P, np.inf)
+            hu = lp.var(n, 0.0, np.inf, cost=soft_penalty)
+            hd = lp.var(n, 0.0, np.inf, cost=soft_penalty)
+            lp.con([(1.0, x), (1.0, r_up), (-1.0, hu)], -np.inf, P)
+            lp.con([(1.0, x), (-1.0, r_dn), (1.0, hd)], -P, np.inf)
         tp = lp.var(1, 0.0, np.inf, cost=soft_penalty)
         tn = lp.var(1, 0.0, np.inf, cost=soft_penalty)
         lp.con([(1.0, soc[n:]), (-1.0, tp), (1.0, tn)], bat.soc_target, bat.soc_target)
