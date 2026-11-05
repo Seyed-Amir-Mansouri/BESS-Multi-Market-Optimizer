@@ -132,3 +132,37 @@ def test_compare_uses_common_days_and_share_of_foresight():
     t = compare({"pf": mk([100.0, 100.0, 100.0], [False, False, False]), "ml": mk([50.0, 40.0, 999.0], [False, False, True])})
     assert list(t["days"]) == [2, 2]
     assert t.set_index("strategy").loc["ml", "pct_of_pf"] == pytest.approx(45.0)
+
+
+def _rebal_cfg():
+    return {"lead_min": 60, "deadband_mwh": 1.0, "hours": 1.0}
+
+
+def test_rebalance_idle_when_charge_follows_plan(cfg):
+    from bess.market_simulator import rebalance
+    bat = Battery.from_config(cfg)
+    n = 96
+    idx = pd.date_range("2025-11-20", periods=n, freq="15min", tz="UTC")
+    z = np.zeros(n)
+    plan = np.full(n + 1, 5.0)
+    q = rebalance(idx, z, z, z, z, z, 5.0, [(idx[0] - pd.Timedelta(hours=12), plan)], bat, _rebal_cfg())
+    assert np.allclose(q, 0.0)
+
+
+def test_rebalance_sells_surplus_after_lead_and_stops_inside_deadband(cfg):
+    from bess.market_simulator import rebalance
+    bat = Battery.from_config(cfg)
+    n = 96
+    idx = pd.date_range("2025-11-20", periods=n, freq="15min", tz="UTC")
+    z = np.zeros(n)
+    a_dn = np.zeros(n)
+    a_dn[:4] = 4.0
+    r = np.full(n, 1.0)
+    plan = np.full(n + 1, 5.0)
+    q = rebalance(idx, z, z, a_dn, r, r, 5.0, [(idx[0] - pd.Timedelta(hours=12), plan)], bat, _rebal_cfg())
+    assert np.allclose(q[:6], 0.0)
+    assert q[6:16].sum() > 0 and np.all(q >= -1e-9)
+    assert np.all(q <= bat.power - 1.0 + 1e-9)
+    gained = 4.0 * 4 * 0.25 * bat.eta_c
+    sold = q.sum() * 0.25 / bat.eta_d
+    assert sold == pytest.approx(gained - 1.0, abs=0.05)

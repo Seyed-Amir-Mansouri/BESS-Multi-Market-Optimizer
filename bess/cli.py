@@ -126,7 +126,7 @@ def cmd_backtest(cfg, args):
     windows = test_set(cfg, args.set) if args.set else None
     results = {}
     for name in _strategies(args.strategy):
-        out = run(cfg, _store(cfg), name, start, end, windows=windows, tag=args.set)
+        out = run(cfg, _store(cfg), name, start, end, windows=windows, tag=args.tag or args.set)
         kept = out[~out["excluded"]]
         print(f"{name}: {len(out)} days, profit {kept['profit'].sum():,.0f} EUR excluding {int(out['excluded'].sum())} days")
         results[name] = out
@@ -289,6 +289,7 @@ def build_parser() -> argparse.ArgumentParser:
     bt.add_argument("--strategy", default="all", choices=["pf", "det", "ml", "sto", "hyb", "all"])
     bt.add_argument("--start"); bt.add_argument("--end")
     bt.add_argument("--set", help="named test set of windows from backtest.sets, such as quick")
+    bt.add_argument("--tag", help="name added to the result files; default the test set name")
     bt.set_defaults(fn=cmd_backtest)
 
     lv = sub.add_parser("live", help="train once on all earlier data and test the last days")
