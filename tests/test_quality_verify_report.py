@@ -47,7 +47,7 @@ def test_verifications_detect_switch_and_coverage(cfg, filled):
     assert v.loc["coverage_ida1", "status"] == "data"
     assert v.loc["limits_da", "status"] == "mismatch"
     assert v.loc["qh_switch_ida2", "status"] == "no data"
-    assert v.loc["fee_ivpee_rate", "status"] == "unverified"
+    assert v.loc["fee_ivpee_rate", "status"] == "partial"
 
 
 def test_coverage_mismatch_is_reported(cfg, filled):

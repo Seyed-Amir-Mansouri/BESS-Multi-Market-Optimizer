@@ -122,7 +122,7 @@ Publication times are deliberately conservative (late). For example, DA results 
 * **Price limits:** observed min/max compared with the configured limits.
 * **Cross-source agreement:** OMIE DA price vs eSIOS and vs ENTSO-E.
 
-Facts that cannot be read from data (gate times, fees and taxes) are recorded in `bess/config/default.yaml` with a `verified` field: `docs`, `secondary` or `no`. They appear in the report as open items until they are confirmed.
+Facts that cannot be read from data (gate times, fees and taxes) are recorded in `bess/config/default.yaml` with a `verified` field: `docs`, `secondary`, `partial` or `no`. They appear in the report as open items until they are confirmed.
 
 ### Findings from documents (2026-10-28)
 
@@ -136,7 +136,7 @@ Facts that cannot be read from data (gate times, fees and taxes) are recorded in
 | aFRR capacity gate | offers D-1 17:00, assignment D-1 17:30 (P.O. 3.1, CNMC resolution of 19 Jan 2026, BOE-A-2026-1377); 16:00 / 16:30 before | docs |
 | aFRR up/down split | first day with a separate upward price: 20 Nov 2024 | data |
 | eSIOS ids | 2130 band price up, 634 band price down (single price before 20 Nov 2024), 632/633 band up/down, 682/683 energy price up/down, 680/681 activated energy up/down | data |
-| Storage fees and taxes | generation toll 0.5 €/MWh, IVPEE 7% and charging tolls all unconfirmed for standalone BESS; CNMC is revising Circular 3/2020 to remove double charging of storage | **open**: needs BOE / CNMC texts |
+| Storage fees and taxes | IVPEE 7% (3.5% in 2024 Q1, 5.25% in 2024 Q2) on net energy income per quarter-hour plus aFRR income, following RDL 8/2023 and DGT V1602-13; no ruling specific to storage. Generation toll 0.5 €/MWh and charging tolls unconfirmed; CNMC is revising Circular 3/2020 | **partial**: IVPEE base for storage and tolls need BOE / CNMC texts |
 
 ## Project layout
 

@@ -239,7 +239,7 @@ def build_quality_report(store: Store, cfg: Config, out_path: Path, esios_client
 
 
 LABELS = {"pf": "perfect foresight", "det": "naive forecasts", "ml": "LightGBM forecasts"}
-PARTS = ["da", "ida1", "ida2", "ida3", "afrr_capacity", "afrr_energy", "degradation", "fees", "penalty", "profit"]
+PARTS = ["da", "ida1", "ida2", "ida3", "afrr_capacity", "afrr_energy", "degradation", "fees", "tax", "penalty", "profit"]
 
 
 def build_backtest_report(cfg: Config, out_path: Path) -> Path:

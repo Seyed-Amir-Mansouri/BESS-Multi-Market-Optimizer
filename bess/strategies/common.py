@@ -38,7 +38,7 @@ class Strategy:
             cap_up=v["cap_up"], cap_dn=v["cap_dn"], share_up=v["share_up"], share_dn=v["share_dn"],
             e_up=v["e_up"], e_dn=v["e_dn"], soc0=ctx.soc0, fixed=ctx.fixed, band_fixed=ctx.band,
             ratio_up=v["ratio_up"] if ctx.day < split else None)
-        plan = solve_day(inp, self.bat, self.fees, self.soft, self.time_limit)
+        plan = solve_day(inp, self.bat, self.fees.on(ctx.day), self.soft, self.time_limit)
         self.plan_end = float(plan.soc[-1])
         return plan
 

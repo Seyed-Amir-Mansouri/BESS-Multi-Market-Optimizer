@@ -7,7 +7,7 @@ from datetime import date, timedelta
 import numpy as np
 import pandas as pd
 
-from .battery import Battery, Fees
+from .battery import Battery, Fees, ivpee_base
 from .bids import clear
 from .config import Config
 from .data.pubtime import market_time
@@ -112,14 +112,14 @@ def settle(act: pd.DataFrame, trades: dict, r_up: np.ndarray, r_dn: np.ndarray, 
     n = len(act)
     out = {}
     x = np.zeros(n)
-    sold = 0.0
+    revenue = np.zeros(n)
     traded = 0.0
     for st in STAGES:
         t = np.asarray(trades.get(st, np.zeros(n)), float)
         p = act[st].to_numpy()
         t = np.where(np.isnan(p), 0.0, t)
         out[st] = float(np.nansum(p * t) * dt)
-        sold += float(np.nansum(np.maximum(p, 0) * np.maximum(t, 0)) * dt)
+        revenue += np.nan_to_num(p * t)
         traded += float(np.abs(t).sum() * dt)
         x += t
     cap_up, cap_dn = act["cap_up"].to_numpy(), act["cap_dn"].to_numpy()
@@ -128,7 +128,10 @@ def settle(act: pd.DataFrame, trades: dict, r_up: np.ndarray, r_dn: np.ndarray, 
     out["afrr_capacity"] = float(np.nansum(cap_up * r_up + cap_dn * r_dn) * dt)
     a_up = np.nan_to_num(act["share_up"].to_numpy()) * r_up
     a_dn = np.nan_to_num(act["share_dn"].to_numpy()) * r_dn
-    out["afrr_energy"] = float((np.nan_to_num(act["e_up"].to_numpy()) * a_up - np.nan_to_num(act["e_dn"].to_numpy()) * a_dn).sum() * dt)
+    e_up, e_dn = np.nan_to_num(act["e_up"].to_numpy()), np.nan_to_num(act["e_dn"].to_numpy())
+    out["afrr_energy"] = float((e_up * a_up - e_dn * a_dn).sum() * dt)
+    out["tax"] = -fees.ivpee * ivpee_base(revenue, np.nan_to_num(cap_up), np.nan_to_num(cap_dn), r_up, r_dn,
+                                          a_up, a_dn, e_up, e_dn, dt)
     ch = np.maximum(-x, 0) + a_dn
     dis = np.maximum(x, 0) + a_up
     soc = np.empty(n + 1)
@@ -148,9 +151,9 @@ def settle(act: pd.DataFrame, trades: dict, r_up: np.ndarray, r_dn: np.ndarray, 
     da = np.nan_to_num(act["da"].to_numpy())
     out["degradation"] = -float((ch + dis).sum() * dt * bat.degradation)
     out["fees"] = -float(dis.sum() * dt * fees.toll_discharge + ch.sum() * dt * fees.toll_charge
-                         + traded * fees.market + sold * fees.ivpee)
+                         + traded * fees.market)
     out["penalty"] = -float((miss * (np.abs(da) + penalty)).sum())
-    out["profit"] = sum(out[k] for k in STAGES + ["afrr_capacity", "afrr_energy", "degradation", "fees", "penalty"])
+    out["profit"] = sum(out[k] for k in STAGES + ["afrr_capacity", "afrr_energy", "degradation", "fees", "tax", "penalty"])
     out["charge_mwh"] = float(ch.sum() * dt)
     out["discharge_mwh"] = float(dis.sum() * dt)
     out["cycles"] = out["discharge_mwh"] / bat.energy
@@ -194,7 +197,7 @@ class Simulator:
             fixed[gate] = prev.copy()
         if band is None:
             band = (np.zeros(n), np.zeros(n))
-        res, soc = settle(act, trades, band[0], band[1], soc_actual, self.bat, self.fees, self.penalty)
+        res, soc = settle(act, trades, band[0], band[1], soc_actual, self.bat, self.fees.on(day), self.penalty)
         res["day"] = str(day)
         res["markets_held"] = ",".join(m for m in STAGES if act[m].notna().any())
         plan_end = strategy.plan_end if getattr(strategy, "plan_end", None) is not None else self.bat.soc_target

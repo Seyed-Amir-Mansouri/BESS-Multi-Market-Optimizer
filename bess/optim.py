@@ -122,7 +122,9 @@ def solve_day(inp: DayInput, bat: Battery, fees: Fees, soft_penalty: float = 1e4
         ub = np.where(band_ok, P, 0.0)
         r_up = lp.var(n, 0.0, ub)
         r_dn = lp.var(n, 0.0, ub)
-    band_value = (cap_up + a_up * _clean(inp.e_up)) * dt, (cap_dn - a_dn * _clean(inp.e_dn)) * dt
+    e_up, e_dn, tax = _clean(inp.e_up), _clean(inp.e_dn), fees.ivpee
+    band_value = ((cap_up - tax * np.maximum(cap_up, 0) + a_up * (e_up - tax * np.maximum(e_up, 0))) * dt,
+                  (cap_dn - tax * np.maximum(cap_dn, 0) - a_dn * (e_dn + tax * np.maximum(-e_dn, 0))) * dt)
     lp.add_cost(r_up, -band_value[0])
     lp.add_cost(r_dn, -band_value[1])
     if inp.ratio_up is not None and inp.band_fixed is None:
@@ -140,11 +142,16 @@ def solve_day(inp: DayInput, bat: Battery, fees: Fees, soft_penalty: float = 1e4
             lp.con([(1.0, r_dn[rows]), (-1.0, r_dn[first[rows]])], 0.0, 0.0)
 
     prev = None
+    prev_val = np.zeros(n)
+    rev_terms, rev_const = [], np.zeros(n)
     pos, trades, socs = {}, {}, {}
     last = len(STAGES) - 1
     for k, st in enumerate(STAGES):
         if st in inp.fixed:
             x = lp.var(n, inp.fixed[st], inp.fixed[st])
+            fx = np.asarray(inp.fixed[st], float)
+            rev_const += _clean(inp.price[st]) * (fx - prev_val) * dt
+            prev_val = fx
             pos[st] = x
             prev = x
             continue
@@ -152,8 +159,9 @@ def solve_day(inp: DayInput, bat: Battery, fees: Fees, soft_penalty: float = 1e4
         open_ = np.asarray(inp.open[st], bool) & ~np.isnan(price)
         p = _clean(price)
         tub = np.where(open_, 2 * P, 0.0)
-        s = lp.var(n, 0.0, tub, cost=-p * dt + fees.market * dt + fees.ivpee * np.maximum(p, 0) * dt)
+        s = lp.var(n, 0.0, tub, cost=-p * dt + fees.market * dt)
         b = lp.var(n, 0.0, tub, cost=p * dt + fees.market * dt)
+        rev_terms += [(-p * dt, s), (p * dt, b)]
         x = lp.var(n, -P, P)
         terms = [(1.0, x), (-1.0, s), (1.0, b)]
         if prev is not None:
@@ -202,6 +210,10 @@ def solve_day(inp: DayInput, bat: Battery, fees: Fees, soft_penalty: float = 1e4
             lp.row([(dt, d), (dt * a_up, r_up), (-1.0, cy)], -np.inf, bat.max_cycles * bat.energy)
         pos[st], trades[st], socs[st] = x, (s, b), soc
         prev = x
+
+    if tax > 0:
+        z = lp.var(n, 0.0, np.inf, cost=tax)
+        lp.con([(1.0, z)] + rev_terms, rev_const, np.inf)
 
     sol, fun = lp.solve(time_limit=time_limit)
     position = {st: sol[i] for st, i in pos.items()}

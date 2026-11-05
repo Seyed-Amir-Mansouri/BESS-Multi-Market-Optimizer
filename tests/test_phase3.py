@@ -92,3 +92,13 @@ def test_error_margins_use_past_days_only():
                       "actual": 100.0, "pred": [104.0, 106.0, 102.0, 200.0, 200.0], "naive": 100.0})
     m = error_margins(p, 28)[("ida1", "ida1")]
     assert m.asof(pd.Timestamp("2025-12-03")) == pytest.approx(4.0)
+
+
+def test_model_edge_compares_with_naive_on_past_days():
+    from bess.strategies.deterministic import model_edge
+    days = [str(date(2025, 12, 1) + timedelta(days=i)) for i in range(4)]
+    p = pd.DataFrame({"target": "da", "gate": "da", "day": days, "slot": 0, "actual": 100.0,
+                      "pred": [102.0, 103.0, 120.0, 120.0], "naive": [110.0, 110.0, 101.0, 101.0]})
+    e = model_edge(p, 56)[("da", "da")]
+    assert e.asof(pd.Timestamp("2025-12-02")) == pytest.approx(7.5)
+    assert e.asof(pd.Timestamp("2025-12-04")) < 0

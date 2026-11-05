@@ -98,9 +98,10 @@ fees:
     note: "peaje de acceso a la generacion (RD 1544/2011). Confirm it applies to standalone storage."
   ivpee_rate:
     value: 0.07
-    applies_to: discharge_revenue
-    verified: no
-    note: "Impuesto sobre el valor de la produccion de energia electrica (Ley 15/2012), 7%. Sector reports double taxation for storage; confirm base for BESS."
+    schedule: {"2024-01-01": 0.035, "2024-04-01": 0.0525, "2024-07-01": 0.07}
+    applies_to: net_energy_revenue_per_qh_and_afrr_income
+    verified: partial
+    note: "Ley 15/2012, 7%. RDL 8/2023: base reduced 50% in 2024 Q1 and 25% in 2024 Q2. DGT V1602-13: secondary reserve payments taxable, deviations reduce the base. No ruling found for storage."
   access_toll_charging_eur_per_mwh:
     value: 0.0
     applies_to: charge
@@ -222,6 +223,9 @@ forecast:
     scale: 1.0
     window_days: 28
     lag_days: 2
+  model_select:
+    enabled: true
+    window_days: 56
   lgbm:
     n_estimators: 250
     learning_rate: 0.06

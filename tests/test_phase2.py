@@ -162,3 +162,31 @@ def test_hourly_band_with_varying_ratio(cfg):
     inp.ratio_up = 0.5 + 0.02 * np.tile([1, -1, 1, -1], 24)
     plan = solve_day(inp, bat, NO_FEES)
     assert plan.r_up.max() > 0.5
+
+
+def test_ivpee_on_net_revenue_and_afrr_income(cfg):
+    bat = Battery.from_config(cfg)
+    fees = Fees(0.0, 0.0, 0.0, 0.07)
+    act = pd.DataFrame({"da": 100.0, "ida1": 95.0, "ida2": np.nan, "ida3": np.nan, "cap_up": 10.0, "cap_dn": 6.0,
+                        "share_up": 0.0, "share_dn": 0.0, "e_up": 0.0, "e_dn": 0.0}, index=_idx())
+    trades = {"da": np.full(4, 1.0), "ida1": np.full(4, -1.0)}
+    out, _ = settle(act, trades, np.full(4, 2.0), np.full(4, 1.0), 5.0, bat, fees, 100.0)
+    assert out["tax"] == pytest.approx(-0.07 * (4 * 5.0 + 4 * 26.0) * 0.25)
+
+
+def test_ivpee_schedule(cfg):
+    f = Fees.from_config(cfg)
+    assert f.on(date(2024, 2, 1)).ivpee == pytest.approx(0.035)
+    assert f.on(date(2024, 5, 1)).ivpee == pytest.approx(0.0525)
+    assert f.on(date(2025, 1, 1)).ivpee == pytest.approx(0.07)
+
+
+def test_optimizer_tax_matches_settlement(cfg):
+    bat = Battery.from_config(cfg)
+    n = 96
+    da = np.where(np.arange(n) < 48, 10.0, 100.0)
+    fees = Fees(0.0, 0.0, 0.0, 0.07)
+    free = solve_day(_day_input(n, da), bat, NO_FEES)
+    taxed = solve_day(_day_input(n, da), bat, fees)
+    x = taxed.position["ida3"]
+    assert taxed.objective == pytest.approx(free.objective - 0.07 * (np.maximum(da * x, 0).sum() * 0.25), rel=1e-3)
