@@ -238,7 +238,7 @@ def build_quality_report(store: Store, cfg: Config, out_path: Path, esios_client
     return out_path
 
 
-LABELS = {"pf": "perfect foresight", "det": "naive forecasts", "ml": "LightGBM forecasts"}
+LABELS = {"pf": "perfect foresight", "det": "naive forecasts", "ml": "LightGBM forecasts", "sto": "stochastic scenarios", "hyb": "hybrid benchmark"}
 PARTS = ["da", "ida1", "ida2", "ida3", "afrr_capacity", "afrr_energy", "degradation", "fees", "tax", "penalty", "profit"]
 
 

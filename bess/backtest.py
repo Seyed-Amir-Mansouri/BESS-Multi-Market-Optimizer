@@ -12,12 +12,14 @@ from .config import Config
 from .data.store import Store
 from .market_simulator import MarketData, Simulator
 from .strategies.deterministic import Deterministic, LightGBM
+from .strategies.hybrid import Hybrid
 from .strategies.perfect_foresight import PerfectForesight
+from .strategies.stochastic import Stochastic
 from .timeutils import daterange
 
 log = logging.getLogger(__name__)
 
-STRATEGIES = {"pf": PerfectForesight, "det": Deterministic, "ml": LightGBM}
+STRATEGIES = {"pf": PerfectForesight, "det": Deterministic, "ml": LightGBM, "sto": Stochastic, "hyb": Hybrid}
 END_COLS = ["da", "ida2", "cap_dn"]
 
 
@@ -35,15 +37,19 @@ def regime(cfg: Config, day: date) -> str:
     return label
 
 
-def results_path(cfg: Config, strategy: str, kind: str = "daily"):
+def results_path(cfg: Config, strategy: str, kind: str = "daily", tag: str | None = None):
     p = cfg.path("backtest_dir")
     p.mkdir(parents=True, exist_ok=True)
-    return p / f"{strategy}_{kind}.parquet"
+    return p / (f"{strategy}_{tag}_{kind}.parquet" if tag else f"{strategy}_{kind}.parquet")
 
 
-def run(cfg: Config, store: Store, strategy: str, start: date | None = None, end: date | None = None) -> pd.DataFrame:
-    """Simulate every delivery day from start to end and store daily results and bids."""
-    start = start or date.fromisoformat(cfg["backtest"]["start"])
+def test_set(cfg: Config, name: str) -> list[tuple[date, date]]:
+    """Windows of a named test set from the config."""
+    return [(date.fromisoformat(w["from"]), date.fromisoformat(w["to"])) for w in cfg["backtest"]["sets"][name]]
+
+
+def simulate(cfg: Config, store: Store, strategy: str, start: date, end: date | None) -> tuple[pd.DataFrame, list]:
+    """Daily results and bids of one continuous window starting at the target charge."""
     md = MarketData(store, cfg, start - timedelta(days=30), end or cfg.data_end())
     end = min(end or md.last_day(END_COLS), md.last_day(END_COLS))
     sim = Simulator(md, cfg)
@@ -60,16 +66,46 @@ def run(cfg: Config, store: Store, strategy: str, start: date | None = None, end
             bids.append(b)
         if (i + 1) % 30 == 0:
             log.info("%s: %s done, %.0f s", strategy, day, time.time() - t0)
-    out = pd.DataFrame(rows)
+    return pd.DataFrame(rows), bids
+
+
+def run(cfg: Config, store: Store, strategy: str, start: date | None = None, end: date | None = None,
+        windows: list | None = None, tag: str | None = None) -> pd.DataFrame:
+    """Simulate every delivery day of the period or of each window and store daily results and bids."""
+    windows = windows or [(start or date.fromisoformat(cfg["backtest"]["start"]), end)]
+    rows, bids = [], []
+    for a, b in windows:
+        r, bb = simulate(cfg, store, strategy, a, b)
+        rows.append(r)
+        bids += bb
+    out = pd.concat(rows, ignore_index=True)
     out = out[["day", "regime", "excluded"] + [c for c in out.columns if c not in ("day", "regime", "excluded")]]
-    out.to_parquet(results_path(cfg, strategy), index=False)
+    out.to_parquet(results_path(cfg, strategy, tag=tag), index=False)
     if bids:
         b = pd.concat(bids, ignore_index=True)
         b["delivery_start"] = pd.to_datetime(b["delivery_start"], utc=True)
-        b.to_parquet(results_path(cfg, strategy, "bids"), index=False)
+        b.to_parquet(results_path(cfg, strategy, "bids", tag), index=False)
     return out
 
 
-def load_results(cfg: Config, strategy: str) -> pd.DataFrame:
-    p = results_path(cfg, strategy)
+def compare(results: dict) -> pd.DataFrame:
+    """Profit of each strategy and its share of the perfect-foresight profit on common days."""
+    days = None
+    for r in results.values():
+        d = set(r.loc[~r["excluded"], "day"].astype(str))
+        days = d if days is None else days & d
+    rows = []
+    for name, r in results.items():
+        k = r[r["day"].astype(str).isin(days)]
+        rows.append({"strategy": name, "days": len(k), "profit": k["profit"].sum(), "penalty": k["penalty"].sum(),
+                     "shortfall_mwh": k["shortfall_mwh"].sum()})
+    out = pd.DataFrame(rows)
+    if "pf" in results:
+        ref = out.loc[out["strategy"] == "pf", "profit"].iloc[0]
+        out["pct_of_pf"] = 100 * out["profit"] / ref if ref else float("nan")
+    return out
+
+
+def load_results(cfg: Config, strategy: str, tag: str | None = None) -> pd.DataFrame:
+    p = results_path(cfg, strategy, tag=tag)
     return pd.read_parquet(p) if p.exists() else pd.DataFrame()

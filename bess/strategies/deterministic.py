@@ -97,8 +97,11 @@ class LightGBM(Deterministic):
         slots = self.md.slot.loc[ctx.index].to_numpy()
         day = str(ctx.day)
         used, model_f = {}, {}
+        self.source = {}
         for t, gates in self.cfg["forecast"]["gates"].items():
             usable = [g for g in gates if GATES.index(g) <= k]
+            if usable:
+                self.source[t] = (usable[-1], False)
             s = self.pred.get((t, usable[-1])) if usable else None
             if s is None or day not in s.index.get_level_values(0) or not self.trusted(t, usable[-1], ctx.day):
                 continue
@@ -107,6 +110,7 @@ class LightGBM(Deterministic):
             v[t] = np.where(~np.isnan(kn), kn, np.where(np.isnan(f), v[t], f))
             used[t] = usable[-1]
             model_f[t] = f
+            self.source[t] = (usable[-1], True)
         for t in STAGES[1:]:
             kn = known(self.md, t, ctx.day, ctx.as_of)
             model = ~np.isnan(model_f[t]) if t in model_f else np.zeros(len(kn), bool)

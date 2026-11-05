@@ -109,14 +109,50 @@ def cmd_fill(cfg, args):
     return 0
 
 
+def _strategies(arg):
+    return ["pf", "det", "ml", "sto"] if not arg or arg == "all" else [arg]
+
+
+def _print_compare(results):
+    from .backtest import compare
+    t = compare(results)
+    print(t.to_string(index=False, float_format=lambda x: f"{x:,.1f}"))
+
+
 def cmd_backtest(cfg, args):
-    from .backtest import run
+    from .backtest import run, test_set
     start = date.fromisoformat(args.start) if args.start else None
     end = date.fromisoformat(args.end) if args.end else None
-    for name in (["pf", "det", "ml"] if args.strategy == "all" else [args.strategy]):
-        out = run(cfg, _store(cfg), name, start, end)
+    windows = test_set(cfg, args.set) if args.set else None
+    results = {}
+    for name in _strategies(args.strategy):
+        out = run(cfg, _store(cfg), name, start, end, windows=windows, tag=args.set)
         kept = out[~out["excluded"]]
         print(f"{name}: {len(out)} days, profit {kept['profit'].sum():,.0f} EUR excluding {int(out['excluded'].sum())} days")
+        results[name] = out
+    if len(results) > 1:
+        _print_compare(results)
+    return 0
+
+
+def cmd_live(cfg, args):
+    from datetime import timedelta
+
+    from .backtest import END_COLS, run
+    from .forecast import train_once
+    from .market_simulator import MarketData
+    store = _store(cfg)
+    md = MarketData(store, cfg, cfg.data_end() - timedelta(days=60), cfg.data_end())
+    end = date.fromisoformat(args.end) if args.end else md.last_day(END_COLS)
+    start = end - timedelta(days=args.days - 1)
+    print(f"training on days before {start - timedelta(days=int(cfg['forecast']['embargo_days']))}, testing {start} .. {end}")
+    _, live = train_once(cfg, store, start, end, log=log.info)
+    results = {}
+    for name in _strategies(args.strategy):
+        out = run(live, store, name, start, end, tag="live")
+        print(f"{name}: {len(out)} days, profit {out.loc[~out['excluded'], 'profit'].sum():,.0f} EUR")
+        results[name] = out
+    _print_compare(results)
     return 0
 
 
@@ -250,9 +286,16 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("fill", help="fill gaps and list unavailable market days").set_defaults(fn=cmd_fill)
 
     bt = sub.add_parser("backtest", help="run the chronological backtest")
-    bt.add_argument("--strategy", default="all", choices=["pf", "det", "ml", "all"])
+    bt.add_argument("--strategy", default="all", choices=["pf", "det", "ml", "sto", "hyb", "all"])
     bt.add_argument("--start"); bt.add_argument("--end")
+    bt.add_argument("--set", help="named test set of windows from backtest.sets, such as quick")
     bt.set_defaults(fn=cmd_backtest)
+
+    lv = sub.add_parser("live", help="train once on all earlier data and test the last days")
+    lv.add_argument("--days", type=int, default=14)
+    lv.add_argument("--end", help="last test day; default the last day with all markets")
+    lv.add_argument("--strategy", default="all", choices=["pf", "det", "ml", "sto", "hyb", "all"])
+    lv.set_defaults(fn=cmd_live)
 
     f = sub.add_parser("forecast", help="walk-forward LightGBM forecasts")
     f.add_argument("--target", action="append")

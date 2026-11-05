@@ -20,6 +20,28 @@ def price_taking(market: str, index: pd.DatetimeIndex, trade: np.ndarray, limits
     }, columns=COLUMNS)
 
 
+def curve(market: str, index: pd.DatetimeIndex, prices: np.ndarray, qty: np.ndarray, limits: dict,
+          tick: float = 0.01, tol: float = 1e-6) -> pd.DataFrame:
+    """Step bids from scenario prices and net sell quantities that rise with the price."""
+    P = np.clip(np.nan_to_num(np.asarray(prices, float)), limits["min"], limits["max"])
+    o = np.argsort(P, axis=0, kind="stable")
+    P = np.take_along_axis(P, o, 0)
+    Q = np.maximum.accumulate(np.take_along_axis(np.asarray(qty, float), o, 0), axis=0)
+    up, dn = np.maximum(Q, 0), np.maximum(-Q, 0)
+    S, n = P.shape
+    cols = np.arange(n)
+    parts = [("sell", np.full(n, limits["min"]), up[0]), ("buy", np.full(n, limits["max"]), dn[-1])]
+    for k in range(1, S):
+        parts.append(("sell", P[k], up[k] - up[k - 1]))
+        parts.append(("buy", np.maximum(P[k] - tick, limits["min"]), dn[k - 1] - dn[k]))
+    rows = []
+    for side, price, q in parts:
+        keep = q > tol
+        rows.append(pd.DataFrame({"market": market, "delivery_start": index[cols[keep]], "side": side,
+                                  "price": price[keep], "quantity_mw": q[keep]}, columns=COLUMNS))
+    return pd.concat(rows, ignore_index=True)
+
+
 def band_offers(market: str, index: pd.DatetimeIndex, up: np.ndarray, down: np.ndarray, price: float = 0.0,
                 tol: float = 1e-6) -> pd.DataFrame:
     """Capacity offers for upward and downward aFRR band."""

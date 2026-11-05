@@ -61,7 +61,7 @@ def naive(md: MarketData, day, as_of: pd.Timestamp, activation_days: int = 7) ->
 def predictions_path(cfg):
     p = cfg.path("forecast_dir")
     p.mkdir(parents=True, exist_ok=True)
-    return p / "predictions.parquet"
+    return p / str(cfg["forecast"].get("predictions") or "predictions.parquet")
 
 
 def load_predictions(cfg) -> pd.DataFrame:
@@ -79,7 +79,7 @@ def _folds(start, end, months: int) -> list:
     return out
 
 
-def walk_forward(cfg, store, start=None, end=None, targets=None, log=None, save=True) -> pd.DataFrame:
+def walk_forward(cfg, store, start=None, end=None, targets=None, log=None, save=True, folds=None) -> pd.DataFrame:
     """Train LightGBM per target and gate on past days only and predict each following block."""
     from datetime import date
 
@@ -96,7 +96,7 @@ def walk_forward(cfg, store, start=None, end=None, targets=None, log=None, save=
     end = min(end, panel.days[-1])
     day_col = np.repeat(panel.days, NS)
     slot_col = np.tile(np.arange(NS), len(panel.days))
-    folds = _folds(start, end, int(fc["retrain_months"]))
+    folds = folds or _folds(start, end, int(fc["retrain_months"]))
     embargo = timedelta(days=int(fc["embargo_days"]))
     params = dict(fc["lgbm"])
     targets = targets or list(fc["gates"])
@@ -133,6 +133,19 @@ def walk_forward(cfg, store, start=None, end=None, targets=None, log=None, save=
     if save:
         out.to_parquet(predictions_path(cfg), index=False)
     return out
+
+
+def train_once(cfg, store, start, end, log=None) -> tuple:
+    """Models trained once on all days before `start` predict start to end; earlier days keep the walk-forward predictions."""
+    from .config import Config, _deep_merge
+    new = walk_forward(cfg, store, start, end, log=log, save=False, folds=[(start, end + timedelta(days=1))])
+    old = load_predictions(cfg)
+    if not old.empty:
+        old = old[pd.to_datetime(old["day"]).dt.date < start]
+    out = pd.concat([old, new], ignore_index=True)
+    live = Config(raw=_deep_merge(cfg.raw, {"forecast": {"predictions": "predictions_live.parquet"}}), base_dir=cfg.base_dir)
+    out.to_parquet(predictions_path(live), index=False)
+    return out, live
 
 
 def accuracy(pred: pd.DataFrame) -> pd.DataFrame:

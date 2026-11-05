@@ -24,6 +24,35 @@ backtest:
   start: "2024-06-14"
   exclude:
     - {from: "2025-04-28", to: "2025-05-04", note: "Iberian blackout week"}
+  sets:
+    quick:
+      - {from: "2024-12-23", to: "2024-12-29"}
+      - {from: "2025-04-07", to: "2025-04-13"}
+      - {from: "2025-06-09", to: "2025-06-15"}
+      - {from: "2025-10-13", to: "2025-10-19"}
+      - {from: "2026-01-05", to: "2026-01-11"}
+      - {from: "2026-03-16", to: "2026-03-22"}
+      - {from: "2026-06-08", to: "2026-06-14"}
+      - {from: "2026-09-07", to: "2026-09-13"}
+
+scenarios:
+  window_days: 365
+  lag_days: 2
+  min_days: 30
+  season_days: 45
+  recency_days: 180
+  samples: 1000
+  count: 10
+  seed: 0
+  targets: [da, ida1, ida2, ida3]
+
+hybrid:
+  perfect: []
+  closed: []
+
+stochastic:
+  band: deterministic
+  nonanticipative: true
 
 battery:
   power_mw: 5.0
@@ -195,6 +224,8 @@ simulator:
   activation_days: 7
   shortfall_penalty_eur_per_mwh: 100.0
   soft_penalty_eur_per_mwh: 10000.0
+  soc_tracking: true
+  end_of_day: target
   solver_time_limit_s: 30
 
 # Fill

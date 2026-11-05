@@ -80,6 +80,7 @@ class Context:
     soc0: float
     fixed: dict = field(default_factory=dict)
     band: tuple | None = None
+    own: dict = field(default_factory=dict)
 
 
 def coverage(cfg: Config, market: str, index: pd.DatetimeIndex) -> np.ndarray:
@@ -172,6 +173,18 @@ class Simulator:
         self.md, self.cfg = md, cfg
         self.bat, self.fees = Battery.from_config(cfg), Fees.from_config(cfg)
         self.penalty = float(cfg["simulator"]["shortfall_penalty_eur_per_mwh"])
+        self.tracking = bool(cfg["simulator"].get("soc_tracking", False))
+        self.prev = None
+
+    def soc_estimate(self, as_of: pd.Timestamp, fallback: float) -> float:
+        """Start-of-day charge from the metered charge at the gate plus the rest of the previous day's plan."""
+        if self.prev is None:
+            return fallback
+        idx, soc, plan = self.prev
+        if plan is None or len(plan) != len(soc):
+            return fallback
+        k = int((idx < as_of).sum())
+        return float(np.clip(soc[k] + plan[-1] - plan[k], self.bat.soc_min, self.bat.soc_max))
 
     def run_day(self, day: date, strategy, soc_plan: float, soc_actual: float):
         idx = self.md.index(day)
@@ -181,9 +194,16 @@ class Simulator:
         prev = np.zeros(n)
         bids = []
         for gate in GATES:
-            soc0 = soc_actual if (gate == "ida3" or strategy.perfect) else soc_plan
-            ctx = Context(day=day, gate=gate, as_of=market_time(self.cfg, gate, "gate", day), index=idx,
-                          soc0=soc0, fixed=dict(fixed), band=band)
+            as_of = market_time(self.cfg, gate, "gate", day)
+            own = {}
+            if gate == "ida3" or strategy.perfect:
+                soc0 = soc_actual
+                if self.tracking and not strategy.perfect:
+                    past = (idx < as_of)
+                    own = {c: np.where(past, act[c].to_numpy(float), np.nan) for c in ("share_up", "share_dn")}
+            else:
+                soc0 = self.soc_estimate(as_of, soc_plan) if self.tracking else soc_plan
+            ctx = Context(day=day, gate=gate, as_of=as_of, index=idx, soc0=soc0, fixed=dict(fixed), band=band, own=own)
             b = strategy.decide(ctx)
             if not b.empty:
                 bids.append(b.assign(day=str(day), gate=gate))
@@ -198,6 +218,8 @@ class Simulator:
         if band is None:
             band = (np.zeros(n), np.zeros(n))
         res, soc = settle(act, trades, band[0], band[1], soc_actual, self.bat, self.fees.on(day), self.penalty)
+        plan_soc = getattr(strategy, "plan_soc", None)
+        self.prev = (idx, soc, None if plan_soc is None else np.array(plan_soc, float))
         res["day"] = str(day)
         res["markets_held"] = ",".join(m for m in STAGES if act[m].notna().any())
         plan_end = strategy.plan_end if getattr(strategy, "plan_end", None) is not None else self.bat.soc_target
