@@ -166,3 +166,15 @@ def test_rebalance_sells_surplus_after_lead_and_stops_inside_deadband(cfg):
     gained = 4.0 * 4 * 0.25 * bat.eta_c
     sold = q.sum() * 0.25 / bat.eta_d
     assert sold == pytest.approx(gained - 1.0, abs=0.05)
+
+
+def test_headroom_keeps_power_free_next_to_the_band(cfg):
+    bat = Battery.from_config(cfg)
+    n = 8
+    inp = _input(n, np.full(n, 50.0), cap=80.0)
+    free = solve_day(inp, bat, NO_FEES)
+    inp.headroom = 1.0
+    kept = solve_day(inp, bat, NO_FEES)
+    assert free.r_up.max() > bat.power - 1.0 + 0.1
+    assert np.all(kept.position["ida3"] + kept.r_up <= bat.power - 1.0 + 1e-6)
+    assert np.all(kept.position["ida3"] - kept.r_dn >= -bat.power + 1.0 - 1e-6)

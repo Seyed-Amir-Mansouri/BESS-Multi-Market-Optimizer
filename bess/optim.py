@@ -92,6 +92,7 @@ class DayInput:
     band_fixed: tuple | None = None
     ratio_up: np.ndarray | None = None
     end_price: float | None = None
+    headroom: float = 0.0
     dt: float = 0.25
 
 
@@ -226,8 +227,8 @@ def _scenario(lp: LP, inp: DayInput, bat: Battery, fees: Fees, w: float, r_up, r
         if band:
             hu = lp.var(n, 0.0, np.inf, cost=w * soft_penalty)
             hd = lp.var(n, 0.0, np.inf, cost=w * soft_penalty)
-            lp.con([(1.0, x), (1.0, r_up), (-1.0, hu)], -np.inf, P)
-            lp.con([(1.0, x), (-1.0, r_dn), (1.0, hd)], -P, np.inf)
+            lp.con([(1.0, x), (1.0, r_up), (-1.0, hu)], -np.inf, P - inp.headroom)
+            lp.con([(1.0, x), (-1.0, r_dn), (1.0, hd)], -P + inp.headroom, np.inf)
         if inp.end_price is None:
             tp = lp.var(1, 0.0, np.inf, cost=w * soft_penalty)
             tn = lp.var(1, 0.0, np.inf, cost=w * soft_penalty)

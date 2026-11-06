@@ -231,6 +231,7 @@ simulator:
     deadband_mwh: 0.5
     hours: 1.0
     spread_eur_per_mwh: 10.0
+    headroom_mw: 0.0
     note: "continuous intraday at day-ahead price plus or minus spread; spread and lead are assumptions, unverified"
   end_of_day: target
   solver_time_limit_s: 30
