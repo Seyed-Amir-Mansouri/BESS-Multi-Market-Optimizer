@@ -8,6 +8,8 @@ Optimizes a battery's participation in the Spanish day-ahead, intraday-auction (
 
 **Phase 3 (Forecasting):** walk-forward LightGBM forecasts for every market input, plugged into the deterministic optimizer.
 
+**Phase 4 (Uncertainty and operation):** scenarios from past forecast errors, a stochastic optimizer with bid curves, metered charge tracking between gates, continuous intraday rebalancing, benchmarks and quick and live tests.
+
 ---
 
 ## Windows setup (PowerShell)
@@ -93,6 +95,31 @@ bess report
 
 `bess forecast` trains one model per target and gate on past days only, retrains every `forecast.retrain_months` and writes out-of-sample predictions to `data_store/forecasts/predictions.parquet`. Strategy `ml` uses them and falls back to the naive forecast where no model exists yet. The report adds forecast accuracy against the naive forecasts.
 
+## Running Phase 4
+
+```powershell
+bess backtest --strategy sto
+bess backtest --set quick
+bess live
+```
+
+| Command | What it does |
+|---|---|
+| `bess backtest --strategy sto` | stochastic optimizer over scenarios of past forecast errors |
+| `bess backtest --set quick` | pf, det, ml and sto on the 8 test weeks in `backtest.sets.quick` |
+| `bess backtest --set quick --tag test1 --strategy ml` | same weeks, results saved under a separate name |
+| `bess live` | models trained once on all data before the last 14 days, then all strategies on those days |
+| `bess live --days 7 --end 2026-10-24` | other window |
+| `bess --config bench.yaml backtest --strategy hyb --tag b1` | benchmark with actual values for the inputs listed in `hybrid.perfect` |
+
+The quick set has two one-week windows per season. Its capture rates come within about two points of the full backtest and rank the strategies the same way, so use it to compare ideas and confirm the winner on the full period. Two weeks alone are too noisy to choose between strategies.
+
+### Operation between gates
+
+* **Charge tracking** (`simulator.soc_tracking`): each gate starts from the metered charge at the gate plus the rest of the previous plan.
+* **Rebalancing** (`simulator.rebalance`): when activations move the metered charge more than `deadband_mwh` from the latest plan, the battery trades in the continuous intraday market to steer back. Trades are decided `lead_min` before delivery, use only power left free by the market position and the aFRR band, and are priced at the day-ahead price plus or minus `spread_eur_per_mwh`. The spread and lead time are assumptions.
+* **Headroom** (`simulator.rebalance.headroom_mw`): power the optimizer keeps free next to the band for rebalancing. Off by default because the lost band income is larger than the penalty it saves.
+
 ## Data model
 
 All series share one long-format Parquet schema under `data_store/clean/<dataset>/<YYYY-MM>.parquet`:
@@ -162,7 +189,9 @@ bess/
   market_simulator.py      market data, gate sequence, settlement
   features.py              gate features from published data
   forecast.py              naive and walk-forward LightGBM forecasts
-  strategies/              perfect foresight, deterministic (naive and LightGBM)
+  uncertainty.py           whole-day forecast errors of past days
+  scenarios.py             error bootstrap and k-medoids reduction
+  strategies/              perfect foresight, naive, LightGBM, stochastic, hybrid benchmarks
   backtest.py              chronological backtest
   report.py                HTML reports
   cli.py                   `bess` command
