@@ -269,7 +269,7 @@ def build_backtest_report(cfg: Config, out_path: Path) -> Path:
         b.append(f'<div class="tiles">{"".join(tiles)}</div>')
 
         b.append("<h2>Value per market</h2>")
-        split = pd.DataFrame({s: r[PARTS].sum() for s, r in kept.items()}).reset_index().rename(columns={"index": "item"})
+        split = pd.DataFrame({s: r.reindex(columns=PARTS, fill_value=0.0).sum() for s, r in kept.items()}).reset_index().rename(columns={"index": "item"})
         b.append(table(split, fmt={s: "{:,.0f}" for s in kept}))
 
         b.append("<h2>Cumulative profit</h2>")
