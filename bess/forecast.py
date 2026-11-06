@@ -79,6 +79,21 @@ def _folds(start, end, months: int) -> list:
     return out
 
 
+def _da_predictions(cfg, panel) -> np.ndarray:
+    """Saved out-of-sample day-ahead predictions at the day-ahead gate aligned to the panel rows."""
+    from .features import NS
+    out = np.full(len(panel.days) * NS, np.nan)
+    p = load_predictions(cfg)
+    if p.empty:
+        return out
+    p = p[(p["target"] == "da") & (p["gate"] == "da") & p["pred"].notna()]
+    pos = {str(d): i for i, d in enumerate(panel.days)}
+    r = p["day"].astype(str).map(pos)
+    ok = r.notna().to_numpy()
+    out[(r[ok].astype(int) * NS + p["slot"][ok]).to_numpy(int)] = p["pred"][ok].to_numpy()
+    return out
+
+
 def walk_forward(cfg, store, start=None, end=None, targets=None, log=None, save=True, folds=None) -> pd.DataFrame:
     """Train LightGBM per target and gate on past days only and predict each following block."""
     from datetime import date
@@ -100,12 +115,16 @@ def walk_forward(cfg, store, start=None, end=None, targets=None, log=None, save=
     embargo = timedelta(days=int(fc["embargo_days"]))
     params = dict(fc["lgbm"])
     targets = targets or list(fc["gates"])
+    surprise = bool(fc.get("da_surprise"))
+    da_pred = _da_predictions(cfg, panel) if surprise else None
     rows = []
     for gate in GATES:
         pairs = [t for t in targets if gate in fc["gates"][t]]
         if not pairs:
             continue
         full = panel.features(gate)
+        if surprise and gate != "da":
+            full["da_surprise"] = full["da_d0"].to_numpy() - da_pred
         X = full.loc[:, full.notna().any()]
         for target in pairs:
             y = panel.val[target].ravel()
@@ -125,6 +144,8 @@ def walk_forward(cfg, store, start=None, end=None, targets=None, log=None, save=
                     if base is not None:
                         pred = pred + base[te]
                     pred = np.clip(pred, lo if lo is not None else -np.inf, hi if hi is not None else np.inf)
+                    if surprise and target == "da" and gate == "da":
+                        da_pred[te] = pred
                 rows.append(pd.DataFrame({"target": target, "gate": gate, "day": day_col[te].astype(str),
                                           "slot": slot_col[te], "actual": y[te], "pred": pred, "naive": nv[te]}))
             if log:

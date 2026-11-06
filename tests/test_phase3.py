@@ -102,3 +102,19 @@ def test_model_edge_compares_with_naive_on_past_days():
     e = model_edge(p, 56)[("da", "da")]
     assert e.asof(pd.Timestamp("2025-12-02")) == pytest.approx(7.5)
     assert e.asof(pd.Timestamp("2025-12-04")) < 0
+
+
+def test_recent_error_uses_only_values_published_by_the_gate():
+    from bess.features import NEVER, NS, Panel
+    p = Panel.__new__(Panel)
+    p.days = np.array([0, 1])
+    a = np.full((2, NS), 10.0)
+    f = np.full((2, NS), 4.0)
+    a[1, :8] = 20.0
+    pub = np.arange(2 * NS, dtype=np.int64).reshape(2, NS) * 100
+    p.val = {"act": a, "fc": f}
+    p.pub = {"act": pub, "fc": np.full((2, NS), 0, dtype=np.int64)}
+    t = np.array([NEVER - 1, pub[1, 3]])
+    out = p.recent_error("act", "fc", t, 8)
+    assert out[1] == pytest.approx((4 * 6.0 + 4 * 16.0) / 8)
+    assert out[0] == pytest.approx(6.0)

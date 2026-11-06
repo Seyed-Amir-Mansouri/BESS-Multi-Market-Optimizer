@@ -126,7 +126,28 @@ class Panel:
             F[f"{c}_wk"] = wk.ravel()
         for c in PRICES[1:]:
             F[f"{c}_spread_lag7"] = F[f"{c}_lag7"] - F["da_lag7"]
+            F[f"{c}_spread_lag1"] = F[f"{c}_lag1"] - F["da_lag1"]
+            F[f"{c}_spread_d0"] = F[f"{c}_d0"] - F["da_d0"]
+        fc = self.cfg["forecast"]
+        k = int(fc.get("nowcast_slots", 12))
+        for name, (a, f) in (fc.get("nowcast") or {}).items():
+            if a in self.val and f in self.val:
+                F[name] = np.repeat(self.recent_error(a, f, t, k), NS)
+        if all(c in F for c in ("load_fc", "wind_fc", "solar_fc")):
+            F["resid_fc"] = F["load_fc"] - F["wind_fc"] - F["solar_fc"]
         return pd.DataFrame(F)
+
+    def recent_error(self, actual: str, forecast: str, t: np.ndarray, k: int) -> np.ndarray:
+        """Mean actual minus forecast over the last k quarter-hours published by each day's gate."""
+        A, P = self.val[actual].ravel(), self.pub[actual].ravel()
+        e = A - self.val[forecast].ravel()
+        out = np.full(len(self.days), np.nan)
+        for i in range(len(self.days)):
+            lo, hi = max(i - 1, 0) * NS, (i + 1) * NS
+            ok = (P[lo:hi] <= t[i]) & ~np.isnan(e[lo:hi])
+            if ok.any():
+                out[i] = e[lo:hi][ok][-k:].mean()
+        return out
 
     def naive(self, target: str, X: pd.DataFrame) -> np.ndarray:
         """Phase 2 naive forecast of a target from the gate features."""

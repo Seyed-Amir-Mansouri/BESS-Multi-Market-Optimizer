@@ -307,3 +307,12 @@ forecast:
     wx_temp_d1: [wx.madrid.temperature_2m.d1, wx.barcelona.temperature_2m.d1, wx.valencia.temperature_2m.d1, wx.sevilla.temperature_2m.d1]
     wx_temp_d2: [wx.madrid.temperature_2m.d2, wx.barcelona.temperature_2m.d2, wx.valencia.temperature_2m.d2, wx.sevilla.temperature_2m.d2]
     wx_cloud_d1: [wx.madrid.cloud_cover.d1, wx.sevilla.cloud_cover.d1, wx.zaragoza.cloud_cover.d1, wx.valencia.cloud_cover.d1]
+    wind_act: [generation_actual_entsoe.wind_onshore_actual_aggregated]
+    solar_act: [generation_actual_entsoe.solar_actual_aggregated]
+    load_act: [load_actual_entsoe]
+  nowcast:
+    wind_err: [wind_act, wind_fc]
+    solar_err: [solar_act, solar_fc]
+    load_err: [load_act, load_fc]
+  nowcast_slots: 12
+  da_surprise: true
