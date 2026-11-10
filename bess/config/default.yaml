@@ -236,6 +236,7 @@ simulator:
   end_of_day: target
   cycle_limit: hard
   cycle_reserve_mwh: 1.0
+  cycle_activation_factor: 1.25
   solver_time_limit_s: 30
 
 # Fill

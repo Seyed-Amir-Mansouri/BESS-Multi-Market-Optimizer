@@ -94,6 +94,7 @@ class DayInput:
     end_price: float | None = None
     headroom: float = 0.0
     cycle_reserve: float = 0.0
+    cycle_activation: float = 1.0
     dt: float = 0.25
 
 
@@ -241,7 +242,7 @@ def _scenario(lp: LP, inp: DayInput, bat: Battery, fees: Fees, w: float, r_up, r
             lp.add_cost(r_up, w * (bat.degradation + fees.toll_discharge) * a_up * dt)
             lp.add_cost(r_dn, w * (bat.degradation + fees.toll_charge) * a_dn * dt)
             cy = lp.var(1, 0.0, np.inf, cost=w * soft_penalty)
-            lp.row([(dt, d), (dt * a_up, r_up), (-1.0, cy)], -np.inf, bat.max_cycles * bat.energy - inp.cycle_reserve)
+            lp.row([(dt, d), (dt * a_up * inp.cycle_activation, r_up), (-1.0, cy)], -np.inf, bat.max_cycles * bat.energy - inp.cycle_reserve)
         pos[st], trades[st], socs[st] = x, (s, b), soc
         prev = x
 
