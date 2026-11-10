@@ -53,6 +53,7 @@ class MarketData:
         f["ratio_up"] = val["sys_up"] / (val["sys_up"] + val["sys_dn"])
         fp["ratio_up"] = pub[["sys_up", "sys_dn"]].max(axis=1)
         self.values, self.pubs = f[COLS], fp[COLS]
+        self.mic = val["mic"] if "mic" in val else pd.Series(np.nan, index=index)
         self.day_of = days
         self.slot = pd.Series((local.hour * 60 + local.minute) // 15, index=index)
         ok = self.values.notna()
@@ -170,7 +171,8 @@ def rebalance(index: pd.DatetimeIndex, x: np.ndarray, a_up: np.ndarray, a_dn: np
 
 def settle(act: pd.DataFrame, trades: dict, r_up: np.ndarray, r_dn: np.ndarray, soc0: float, bat: Battery, fees: Fees,
            penalty: float, dt: float = 0.25, tol: float = 1e-3, rebal: np.ndarray | None = None,
-           spread: float = 0.0, budget: float | None = None) -> tuple[dict, np.ndarray]:
+           spread: float = 0.0, budget: float | None = None, mic: np.ndarray | None = None,
+           slippage: float = 0.0) -> tuple[dict, np.ndarray]:
     """Realised cash flows and state of charge of one day."""
     n = len(act)
     out = {}
@@ -188,6 +190,9 @@ def settle(act: pd.DataFrame, trades: dict, r_up: np.ndarray, r_dn: np.ndarray, 
     q = np.zeros(n) if rebal is None else np.asarray(rebal, float)
     da = np.nan_to_num(act["da"].to_numpy())
     qp = da - np.sign(q) * spread
+    if mic is not None:
+        m = np.asarray(mic, float)
+        qp = np.where(np.isnan(m), qp, m - np.sign(q) * slippage)
     out["rebalance"] = float((q * qp).sum() * dt)
     revenue += q * qp
     traded += float(np.abs(q).sum() * dt)
@@ -307,7 +312,9 @@ class Simulator:
             band = (np.zeros(n), np.zeros(n))
         q = self._rebalance(idx, act, prev, band, soc_actual, plans) if rebal else None
         res, soc = settle(act, trades, band[0], band[1], soc_actual, self.bat, self.fees.on(day), self.penalty,
-                          rebal=q, spread=float(self.rcfg.get("spread_eur_per_mwh", 0.0)), budget=self.budget)
+                          rebal=q, spread=float(self.rcfg.get("spread_eur_per_mwh", 0.0)), budget=self.budget,
+                          mic=self.md.mic.loc[idx].to_numpy(float) if self.rcfg.get("price") == "mic" else None,
+                          slippage=float(self.rcfg.get("mic_slippage_eur_per_mwh", 0.0)))
         plan_soc = plans[-1][1] if plans else None
         self.prev = (idx, soc, plan_soc)
         res["day"] = str(day)

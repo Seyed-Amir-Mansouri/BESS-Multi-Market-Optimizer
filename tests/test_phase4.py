@@ -211,3 +211,18 @@ def test_settle_stops_discharge_at_the_cycle_budget_and_counts_shortfall(cfg):
     assert free["discharge_mwh"] == pytest.approx(8.0)
     assert capped["discharge_mwh"] == pytest.approx(5.0)
     assert capped["shortfall_mwh"] == pytest.approx(3.0)
+
+
+def test_settle_prices_rebalancing_at_continuous_trades_where_known(cfg):
+    from bess.market_simulator import settle
+    bat = Battery.from_config(cfg)
+    n = 4
+    idx = pd.date_range("2025-11-20", periods=n, freq="15min", tz="UTC")
+    act = pd.DataFrame({c: 50.0 for c in ["da", "ida1", "ida2", "ida3", "cap_up", "cap_dn", "e_up", "e_dn"]}, index=idx)
+    act["share_up"] = 0.0
+    act["share_dn"] = 0.0
+    z = np.zeros(n)
+    q = np.array([1.0, -1.0, 1.0, 0.0])
+    mic = np.array([80.0, 80.0, np.nan, 80.0])
+    out, _ = settle(act, {}, z, z, 5.0, bat, NO_FEES, 100.0, rebal=q, spread=10.0, mic=mic, slippage=2.0)
+    assert out["rebalance"] == pytest.approx((78.0 - 82.0 + 40.0) * 0.25)

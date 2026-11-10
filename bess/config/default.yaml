@@ -151,6 +151,12 @@ omie:
   ida_first_day: "2024-06-14"
   download_curves: false
 
+# OMIE continuous intraday
+mic:
+  rebalance_lead_min: 90
+  rebalance_window_min: 60
+  note: "trades are assumed visible to participants when matched; OMIE archives them monthly with a delay"
+
 # eSIOS
 esios:
   base_url: "https://api.esios.ree.es"
@@ -217,6 +223,7 @@ simulator:
     cap_dn: afrr_band_price_down
     sys_up: afrr_band_up_mw
     sys_dn: afrr_band_down_mw
+    mic: mic_rebal
     e_up: afrr_energy_price_up
     e_dn: afrr_energy_price_down
     act_up: afrr_energy_up_mwh
@@ -231,8 +238,10 @@ simulator:
     deadband_mwh: 0.5
     hours: 1.0
     spread_eur_per_mwh: 10.0
+    price: mic
+    mic_slippage_eur_per_mwh: 2.0
     headroom_mw: 0.0
-    note: "continuous intraday at day-ahead price plus or minus spread; spread and lead are assumptions, unverified"
+    note: "continuous intraday at the OMIE trade price 60 to 120 min before delivery plus slippage, else day-ahead plus or minus spread; slippage and spread are assumptions"
   end_of_day: target
   cycle_limit: hard
   cycle_reserve_mwh: 1.0

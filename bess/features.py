@@ -129,6 +129,9 @@ class Panel:
             F[f"{c}_spread_lag1"] = F[f"{c}_lag1"] - F["da_lag1"]
             F[f"{c}_spread_d0"] = F[f"{c}_d0"] - F["da_d0"]
         fc = self.cfg["forecast"]
+        for c in fc.get("spread_exog") or []:
+            if c in F:
+                F[f"{c}_spread"] = F[c] - F["da_d0"]
         k = int(fc.get("nowcast_slots", 12))
         for name, (a, f) in (fc.get("nowcast") or {}).items():
             if a in self.val and f in self.val:

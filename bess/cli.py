@@ -12,7 +12,7 @@ from .config import load_config, secret
 
 log = logging.getLogger("bess")
 
-SOURCES = ["omie", "esios", "entsoe", "weather"]
+SOURCES = ["omie", "mic", "esios", "entsoe", "weather"]
 PROBES = {
     "omie": "https://www.omie.es/es/file-download?parents=marginalpdbc&filename=marginalpdbc_20250101.1",
     "esios": "https://api.esios.ree.es/indicators",
@@ -55,6 +55,9 @@ def cmd_download(cfg, args):
             if src == "omie":
                 from .data.omie import OmieDownloader
                 counts = OmieDownloader(cfg, store).download(start, end, force=args.force)
+            elif src == "mic":
+                from .data.mic import MicDownloader
+                counts = MicDownloader(cfg, store).download(start, end, force=args.force)
             elif src == "esios":
                 from .data.esios import EsiosClient
                 client = EsiosClient(cfg, store)
