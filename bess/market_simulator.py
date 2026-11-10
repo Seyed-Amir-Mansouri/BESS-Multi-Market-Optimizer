@@ -59,6 +59,7 @@ class MarketData:
         ok = self.values.notna()
         g = days.to_numpy()
         self.day_count = ok.groupby(g).sum()
+        self.day_count["mic"] = self.mic.notna().groupby(g).sum().reindex(self.day_count.index, fill_value=0)
         self.day_pub = self.pubs.where(ok).groupby(g).max()
 
     def index(self, day) -> pd.DatetimeIndex:

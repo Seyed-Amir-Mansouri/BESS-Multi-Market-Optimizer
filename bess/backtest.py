@@ -20,7 +20,7 @@ from .timeutils import daterange
 log = logging.getLogger(__name__)
 
 STRATEGIES = {"pf": PerfectForesight, "det": Deterministic, "ml": LightGBM, "sto": Stochastic, "hyb": Hybrid}
-END_COLS = ["da", "ida2", "cap_dn"]
+END_COLS = ["da", "ida2", "cap_dn", "mic"]
 
 
 def excluded(cfg: Config, day: date) -> bool:
