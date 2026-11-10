@@ -95,6 +95,7 @@ class DayInput:
     headroom: float = 0.0
     cycle_reserve: float = 0.0
     cycle_activation: float = 1.0
+    soc_margin: np.ndarray | None = None
     dt: float = 0.25
 
 
@@ -226,6 +227,10 @@ def _scenario(lp: LP, inp: DayInput, bat: Battery, fees: Fees, w: float, r_up, r
                 upper.append((bat.reserve_h * bat.eta_c, r_dn))
             lp.con(lower, bat.soc_min, np.inf)
             lp.con(upper, -np.inf, bat.soc_max)
+            if inp.soc_margin is not None:
+                m = inp.soc_margin[sl]
+                lp.con([(1.0, soc[sl]), (1.0, lo[sl])], bat.soc_min + m, np.inf)
+                lp.con([(1.0, soc[sl]), (-1.0, hi[sl])], -np.inf, bat.soc_max - m)
         if band:
             hu = lp.var(n, 0.0, np.inf, cost=w * soft_penalty)
             hd = lp.var(n, 0.0, np.inf, cost=w * soft_penalty)

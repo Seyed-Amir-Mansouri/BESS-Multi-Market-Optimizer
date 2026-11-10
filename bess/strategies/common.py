@@ -29,6 +29,8 @@ class Strategy:
         self.headroom = float(rb.get("headroom_mw", 0.0)) if rb.get("enabled") and not self.perfect else 0.0
         self.cycle_reserve = 0.0 if self.perfect else float(sim.get("cycle_reserve_mwh", 0.0))
         self.cycle_activation = 1.0 if self.perfect else float(sim.get("cycle_activation_factor", 1.0))
+        m = None if self.perfect else sim.get("soc_margin_mwh")
+        self.soc_margin = None if m is None else np.resize(np.asarray(m, float), 24)
 
     def decide(self, ctx: Context) -> pd.DataFrame:
         raise NotImplementedError
@@ -48,7 +50,14 @@ class Strategy:
             e_up=v["e_up"], e_dn=v["e_dn"], soc0=ctx.soc0, fixed=ctx.fixed, band_fixed=ctx.band,
             ratio_up=v["ratio_up"] if ctx.day < split else None, end_price=self.end_price(v),
             headroom=self.headroom, cycle_reserve=self.cycle_reserve,
-            cycle_activation=self.cycle_activation)
+            cycle_activation=self.cycle_activation, soc_margin=self.margin_profile(idx))
+
+    def margin_profile(self, idx: pd.DatetimeIndex) -> np.ndarray | None:
+        """Planned charge margin from each limit per quarter-hour boundary, by local hour."""
+        if self.soc_margin is None:
+            return None
+        m = self.soc_margin[idx.tz_convert(self.cfg.tz).hour]
+        return np.r_[m, m[-1]]
 
     def end_price(self, v: dict) -> float | None:
         """Value of stored energy at midnight, or None for a fixed end-of-day target."""

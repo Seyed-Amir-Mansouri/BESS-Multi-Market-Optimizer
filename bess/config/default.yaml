@@ -246,6 +246,7 @@ simulator:
   cycle_limit: hard
   cycle_reserve_mwh: 1.0
   cycle_activation_factor: 1.25
+  soc_margin_mwh: 1.5
   solver_time_limit_s: 30
 
 # Fill

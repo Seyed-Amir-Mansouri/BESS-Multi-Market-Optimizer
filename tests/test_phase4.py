@@ -226,3 +226,15 @@ def test_settle_prices_rebalancing_at_continuous_trades_where_known(cfg):
     mic = np.array([80.0, 80.0, np.nan, 80.0])
     out, _ = settle(act, {}, z, z, 5.0, bat, NO_FEES, 100.0, rebal=q, spread=10.0, mic=mic, slippage=2.0)
     assert out["rebalance"] == pytest.approx((78.0 - 82.0 + 40.0) * 0.25)
+
+
+def test_planned_charge_keeps_the_margin_from_both_limits(cfg):
+    bat = Battery.from_config(cfg)
+    n = 96
+    da = np.where((np.arange(n) >= 24) & (np.arange(n) < 72), 10.0, 200.0)
+    free = solve_day(_input(n, da), bat, NO_FEES)
+    inp = _input(n, da)
+    inp.soc_margin = np.full(n + 1, 1.5)
+    kept = solve_day(inp, bat, NO_FEES)
+    assert free.soc.min() < 0.5 and free.soc.max() > 9.5
+    assert kept.soc[1:].min() >= 1.5 - 1e-6 and kept.soc.max() <= 8.5 + 1e-6
