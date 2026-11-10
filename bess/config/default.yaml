@@ -234,6 +234,8 @@ simulator:
     headroom_mw: 0.0
     note: "continuous intraday at day-ahead price plus or minus spread; spread and lead are assumptions, unverified"
   end_of_day: target
+  cycle_limit: hard
+  cycle_reserve_mwh: 1.0
   solver_time_limit_s: 30
 
 # Fill

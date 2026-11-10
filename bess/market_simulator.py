@@ -131,7 +131,7 @@ def activations(act: pd.DataFrame, r_up: np.ndarray, r_dn: np.ndarray) -> tuple[
 
 def rebalance(index: pd.DatetimeIndex, x: np.ndarray, a_up: np.ndarray, a_dn: np.ndarray, r_up: np.ndarray,
               r_dn: np.ndarray, soc0: float, plans: list, bat: Battery, rcfg: dict, dt: float = 0.25,
-              tol: float = 1e-3) -> np.ndarray:
+              tol: float = 1e-3, budget: float | None = None) -> np.ndarray:
     """Continuous intraday trades that steer the metered charge back toward the latest plan, positive when selling."""
     n = len(x)
     q = np.zeros(n)
@@ -144,6 +144,8 @@ def rebalance(index: pd.DatetimeIndex, x: np.ndarray, a_up: np.ndarray, a_dn: np
     times = [t for t, _ in plans]
     soc = np.empty(n + 1)
     soc[0] = soc0
+    used = np.zeros(n + 1)
+    ahead = np.concatenate([np.cumsum(np.maximum(x, 0)[::-1])[::-1], [0.0]]) * dt
     for i in range(n):
         k = max(i - lead, 0)
         t = index[i] - pd.Timedelta(minutes=lead_min)
@@ -156,15 +158,19 @@ def rebalance(index: pd.DatetimeIndex, x: np.ndarray, a_up: np.ndarray, a_dn: np
                 want = (dev - np.sign(dev) * band) / hours
                 sell_room = max(bat.power - r_up[i] - x[i], 0.0)
                 buy_room = max(bat.power - r_dn[i] + x[i], 0.0)
+                if budget is not None:
+                    spent = used[k] + ahead[k] + np.maximum(q[k:i], 0).sum() * dt
+                    sell_room = min(sell_room, max(budget - spent, 0.0) / dt)
                 q[i] = float(np.clip(want, -buy_room, sell_room))
         y = x[i] + q[i]
-        soc[i + 1] = _step(soc[i], max(-y, 0) + a_dn[i], max(y, 0) + a_up[i], bat, dt, tol)[0]
+        soc[i + 1], _, dis, _ = _step(soc[i], max(-y, 0) + a_dn[i], max(y, 0) + a_up[i], bat, dt, tol)
+        used[i + 1] = used[i] + dis * dt
     return q
 
 
 def settle(act: pd.DataFrame, trades: dict, r_up: np.ndarray, r_dn: np.ndarray, soc0: float, bat: Battery, fees: Fees,
            penalty: float, dt: float = 0.25, tol: float = 1e-3, rebal: np.ndarray | None = None,
-           spread: float = 0.0) -> tuple[dict, np.ndarray]:
+           spread: float = 0.0, budget: float | None = None) -> tuple[dict, np.ndarray]:
     """Realised cash flows and state of charge of one day."""
     n = len(act)
     out = {}
@@ -200,8 +206,15 @@ def settle(act: pd.DataFrame, trades: dict, r_up: np.ndarray, r_dn: np.ndarray, 
     soc = np.empty(n + 1)
     soc[0] = soc0
     miss = np.zeros(n)
+    used = 0.0
     for i in range(n):
+        cut = 0.0
+        if budget is not None and dis[i] * dt > budget - used + tol:
+            cut = dis[i] - max(budget - used, 0.0) / dt
+            dis[i] -= cut
         soc[i + 1], ch[i], dis[i], miss[i] = _step(soc[i], ch[i], dis[i], bat, dt, tol)
+        miss[i] += cut * dt
+        used += dis[i] * dt
     out["degradation"] = -float((ch + dis).sum() * dt * bat.degradation)
     out["fees"] = -float(dis.sum() * dt * fees.toll_discharge + ch.sum() * dt * fees.toll_charge
                          + traded * fees.market)
@@ -228,6 +241,8 @@ class Simulator:
         self.penalty = float(cfg["simulator"]["shortfall_penalty_eur_per_mwh"])
         self.tracking = bool(cfg["simulator"].get("soc_tracking", False))
         self.rcfg = cfg["simulator"].get("rebalance") or {}
+        hard = str(cfg["simulator"].get("cycle_limit", "soft")) == "hard"
+        self.budget = self.bat.max_cycles * self.bat.energy if hard else None
         self.prev = None
 
     def soc_estimate(self, as_of: pd.Timestamp, fallback: float) -> float:
@@ -246,7 +261,7 @@ class Simulator:
         r_up = np.where(np.isnan(cap_up), 0.0, r_up)
         r_dn = np.where(np.isnan(cap_dn), 0.0, r_dn)
         a_up, a_dn = activations(act, r_up, r_dn)
-        return rebalance(idx, x, a_up, a_dn, r_up, r_dn, soc0, plans, self.bat, self.rcfg)
+        return rebalance(idx, x, a_up, a_dn, r_up, r_dn, soc0, plans, self.bat, self.rcfg, budget=self.budget)
 
     def run_day(self, day: date, strategy, soc_plan: float, soc_actual: float):
         idx = self.md.index(day)
@@ -292,7 +307,7 @@ class Simulator:
             band = (np.zeros(n), np.zeros(n))
         q = self._rebalance(idx, act, prev, band, soc_actual, plans) if rebal else None
         res, soc = settle(act, trades, band[0], band[1], soc_actual, self.bat, self.fees.on(day), self.penalty,
-                          rebal=q, spread=float(self.rcfg.get("spread_eur_per_mwh", 0.0)))
+                          rebal=q, spread=float(self.rcfg.get("spread_eur_per_mwh", 0.0)), budget=self.budget)
         plan_soc = plans[-1][1] if plans else None
         self.prev = (idx, soc, plan_soc)
         res["day"] = str(day)

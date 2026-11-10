@@ -27,6 +27,7 @@ class Strategy:
         self.plan_soc = None
         rb = sim.get("rebalance") or {}
         self.headroom = float(rb.get("headroom_mw", 0.0)) if rb.get("enabled") and not self.perfect else 0.0
+        self.cycle_reserve = 0.0 if self.perfect else float(sim.get("cycle_reserve_mwh", 0.0))
 
     def decide(self, ctx: Context) -> pd.DataFrame:
         raise NotImplementedError
@@ -45,7 +46,7 @@ class Strategy:
             cap_up=v["cap_up"], cap_dn=v["cap_dn"], share_up=v["share_up"], share_dn=v["share_dn"],
             e_up=v["e_up"], e_dn=v["e_dn"], soc0=ctx.soc0, fixed=ctx.fixed, band_fixed=ctx.band,
             ratio_up=v["ratio_up"] if ctx.day < split else None, end_price=self.end_price(v),
-            headroom=self.headroom)
+            headroom=self.headroom, cycle_reserve=self.cycle_reserve)
 
     def end_price(self, v: dict) -> float | None:
         """Value of stored energy at midnight, or None for a fixed end-of-day target."""

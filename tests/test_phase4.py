@@ -178,3 +178,36 @@ def test_headroom_keeps_power_free_next_to_the_band(cfg):
     assert free.r_up.max() > bat.power - 1.0 + 0.1
     assert np.all(kept.position["ida3"] + kept.r_up <= bat.power - 1.0 + 1e-6)
     assert np.all(kept.position["ida3"] - kept.r_dn >= -bat.power + 1.0 - 1e-6)
+
+
+def test_rebalance_sells_stay_inside_the_daily_discharge_budget(cfg):
+    from bess.market_simulator import rebalance
+    bat = Battery.from_config(cfg)
+    n = 96
+    idx = pd.date_range("2025-11-20", periods=n, freq="15min", tz="UTC")
+    z = np.zeros(n)
+    a_dn = np.zeros(n)
+    a_dn[:4] = 4.0
+    r = np.full(n, 1.0)
+    plan = np.full(n + 1, 5.0)
+    x = np.zeros(n)
+    x[40:44] = 4.0
+    q = rebalance(idx, x, z, a_dn, r, r, 5.0, [(idx[0] - pd.Timedelta(hours=12), plan)], bat, _rebal_cfg(), budget=4.5)
+    assert np.maximum(q, 0).sum() * 0.25 <= 0.5 + 1e-6
+
+
+def test_settle_stops_discharge_at_the_cycle_budget_and_counts_shortfall(cfg):
+    from bess.market_simulator import settle
+    bat = Battery.from_config(cfg)
+    n = 8
+    idx = pd.date_range("2025-11-20", periods=n, freq="15min", tz="UTC")
+    act = pd.DataFrame({c: 50.0 for c in ["da", "ida1", "ida2", "ida3", "cap_up", "cap_dn", "e_up", "e_dn"]}, index=idx)
+    act["share_up"] = 0.0
+    act["share_dn"] = 0.0
+    trades = {"da": np.full(n, 4.0)}
+    z = np.zeros(n)
+    free, _ = settle(act, trades, z, z, 9.0, bat, NO_FEES, 100.0)
+    capped, _ = settle(act, trades, z, z, 9.0, bat, NO_FEES, 100.0, budget=5.0)
+    assert free["discharge_mwh"] == pytest.approx(8.0)
+    assert capped["discharge_mwh"] == pytest.approx(5.0)
+    assert capped["shortfall_mwh"] == pytest.approx(3.0)
