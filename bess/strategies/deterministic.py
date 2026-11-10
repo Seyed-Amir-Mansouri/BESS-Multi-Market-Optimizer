@@ -111,10 +111,14 @@ class LightGBM(Deterministic):
             used[t] = usable[-1]
             model_f[t] = f
             self.source[t] = (usable[-1], True)
+        latest = self.cfg["forecast"].get("ida_fallback", "da") == "latest"
+        fallback = np.asarray(v["da"], float).copy()
         for t in STAGES[1:]:
             kn = known(self.md, t, ctx.day, ctx.as_of)
             model = ~np.isnan(model_f[t]) if t in model_f else np.zeros(len(kn), bool)
-            v[t] = np.where(~np.isnan(kn), kn, np.where(model, v[t], v["da"]))
+            v[t] = np.where(~np.isnan(kn), kn, np.where(model, v[t], fallback))
+            if latest:
+                fallback = np.where(np.isnan(kn), fallback, kn)
         if self.margins:
             ref = np.asarray(v["da"], float).copy()
             for t in STAGES[1:]:

@@ -329,3 +329,4 @@ forecast:
     load_err: [load_act, load_fc]
   nowcast_slots: 12
   da_surprise: true
+  ida_fallback: latest
