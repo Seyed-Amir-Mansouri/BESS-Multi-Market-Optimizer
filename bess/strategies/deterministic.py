@@ -81,6 +81,9 @@ class LightGBM(Deterministic):
         m = s.asof(pd.Timestamp(day - timedelta(days=self.lag)))
         return 0.0 if pd.isna(m) else self.scale * float(m)
 
+    def override(self, v: dict, ctx: Context) -> None:
+        """Replace forecasts in place before the intraday fallback is applied."""
+
     def trusted(self, target: str, gate: str, day) -> bool:
         """Whether the model beat the naive forecast on recent published days."""
         if not self.select:
@@ -111,6 +114,7 @@ class LightGBM(Deterministic):
             used[t] = usable[-1]
             model_f[t] = f
             self.source[t] = (usable[-1], True)
+        self.override(v, ctx)
         latest = self.cfg["forecast"].get("ida_fallback", "da") == "latest"
         fallback = np.asarray(v["da"], float).copy()
         for t in STAGES[1:]:

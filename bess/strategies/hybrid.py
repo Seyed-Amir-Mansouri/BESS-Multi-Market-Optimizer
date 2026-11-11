@@ -17,11 +17,15 @@ class Hybrid(LightGBM):
         self.perfect_inputs = list(h.get("perfect") or [])
         self.closed = list(h.get("closed") or [])
 
-    def forecasts(self, ctx: Context) -> dict:
-        v = super().forecasts(ctx)
+    def override(self, v: dict, ctx: Context) -> None:
+        """Set the chosen inputs to their actual values."""
         act = self.md.day(ctx.day)
         for t in self.perfect_inputs:
             v[t] = act[t].to_numpy(dtype=float)
+
+    def forecasts(self, ctx: Context) -> dict:
+        v = super().forecasts(ctx)
+        self.override(v, ctx)
         for m in self.closed:
             v[m] = np.full(len(ctx.index), np.nan)
         return v

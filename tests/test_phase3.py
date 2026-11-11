@@ -118,3 +118,19 @@ def test_recent_error_uses_only_values_published_by_the_gate():
     out = p.recent_error("act", "fc", t, 8)
     assert out[1] == pytest.approx((4 * 6.0 + 4 * 16.0) / 8)
     assert out[0] == pytest.approx(6.0)
+
+
+def test_hybrid_intraday_fallback_follows_the_actual_day_ahead_price(cfg, store):
+    from bess.market_simulator import Context
+    from bess.strategies.hybrid import Hybrid
+    cfg = _small(cfg)
+    cfg.raw["forecast"]["ida_fallback"] = "latest"
+    cfg.raw["hybrid"] = {"perfect": ["da"]}
+    _write(cfg, store, DAYS, shift=lambda d: 10.0 * d.day)
+    md = MarketData(store, cfg, DAYS[0], DAYS[-1])
+    day = DAYS[10]
+    ctx = Context(day=day, gate="da", as_of=market_time(cfg, "da", "gate", day), index=md.index(day), soc0=5.0)
+    v = Hybrid(md, cfg).forecasts(ctx)
+    da = md.day(day)["da"].to_numpy(float)
+    assert np.allclose(v["da"], da)
+    assert np.allclose(v["ida1"], da)
