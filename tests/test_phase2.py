@@ -190,3 +190,25 @@ def test_optimizer_tax_matches_settlement(cfg):
     taxed = solve_day(_day_input(n, da), bat, fees)
     x = taxed.position["ida3"]
     assert taxed.objective == pytest.approx(free.objective - 0.07 * (np.maximum(da * x, 0).sum() * 0.25), rel=1e-3)
+
+
+def _stage_soc(x, soc0, dt=0.25, eta=0.95):
+    soc = [soc0]
+    for e in x:
+        soc.append(soc[-1] - (e * dt / eta if e > 0 else e * dt * eta))
+    return np.array(soc)
+
+
+@pytest.mark.parametrize("exclusive", [False, True])
+def test_interim_plans_do_not_charge_and_discharge_at_once(cfg, exclusive):
+    bat = Battery.from_config(cfg)
+    n = 8
+    inp = _day_input(n, np.full(n, 50.0), soc0=8.0)
+    inp.price["ida1"] = np.full(n, 0.0)
+    inp.price["ida2"] = np.full(n, 40.0)
+    inp.price["ida3"] = np.full(n, np.nan)
+    inp.interim_exclusive = exclusive
+    plan = solve_day(inp, bat, NO_FEES)
+    soc = _stage_soc(plan.position["ida1"], 8.0)
+    feasible = soc.min() >= bat.soc_min - 1e-6 and soc.max() <= bat.soc_max + 1e-6 and abs(soc[-1] - bat.soc_target) < 1e-6
+    assert feasible == exclusive

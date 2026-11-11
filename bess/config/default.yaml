@@ -105,6 +105,7 @@ markets:
     results: {day_offset: -1, time: "17:30"}
     coverage: {from: "00:00", to: "24:00"}
     price_limits: {min: 0.0, max: null}
+    enabled: true
     verified:
       gate: docs
       results: docs
@@ -247,6 +248,8 @@ simulator:
   cycle_reserve_mwh: 0.0
   cycle_activation_factor: 1.0
   soc_margin_mwh: null
+  interim_cycle_cost_eur_per_mwh: 0.0
+  interim_exclusive: true
   solver_time_limit_s: 30
 
 # Fill

@@ -96,6 +96,8 @@ class DayInput:
     cycle_reserve: float = 0.0
     cycle_activation: float = 1.0
     soc_margin: np.ndarray | None = None
+    interim_cost: float = 0.0
+    interim_exclusive: bool = False
     dt: float = 0.25
 
 
@@ -206,9 +208,13 @@ def _scenario(lp: LP, inp: DayInput, bat: Battery, fees: Fees, w: float, r_up, r
             pos[st] = x
             prev = x
             continue
-        c = lp.var(n, 0.0, P, cost=w * ((bat.degradation + fees.toll_charge) * dt if final else 0.01 * dt))
-        d = lp.var(n, 0.0, P, cost=w * ((bat.degradation + fees.toll_discharge) * dt if final else 0.01 * dt))
+        c = lp.var(n, 0.0, P, cost=w * ((bat.degradation + fees.toll_charge) * dt if final else inp.interim_cost * dt))
+        d = lp.var(n, 0.0, P, cost=w * ((bat.degradation + fees.toll_discharge) * dt if final else inp.interim_cost * dt))
         lp.con([(1.0, d), (-1.0, c), (-1.0, x)], 0.0, 0.0)
+        if inp.interim_exclusive and not final:
+            z = lp.var(n, 0.0, 1.0, integer=True)
+            lp.con([(1.0, c), (-P, z)], -np.inf, 0.0)
+            lp.con([(1.0, d), (P, z)], -np.inf, P)
         soc = lp.var(n + 1, -np.inf, np.inf)
         slack = final_slack if final else np.full(n + 1, soft_penalty)
         lo = lp.var(n + 1, 0.0, np.inf, cost=w * slack)

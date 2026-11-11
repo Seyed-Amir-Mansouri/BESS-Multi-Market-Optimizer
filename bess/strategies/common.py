@@ -31,6 +31,9 @@ class Strategy:
         self.cycle_activation = 1.0 if self.perfect else float(sim.get("cycle_activation_factor", 1.0))
         m = None if self.perfect else sim.get("soc_margin_mwh")
         self.soc_margin = None if m is None else np.resize(np.asarray(m, float), 24)
+        self.afrr = bool(cfg["markets"]["afrr_capacity"].get("enabled", True))
+        self.interim_cost = float(sim.get("interim_cycle_cost_eur_per_mwh", 0.0))
+        self.interim_exclusive = bool(sim.get("interim_exclusive", False))
 
     def decide(self, ctx: Context) -> pd.DataFrame:
         raise NotImplementedError
@@ -41,6 +44,8 @@ class Strategy:
             v = dict(v)
             for k, o in ctx.own.items():
                 v[k] = np.where(np.isnan(o), np.asarray(v[k], float), o)
+        if not self.afrr:
+            v = dict(v, cap_up=np.full(len(idx), np.nan), cap_dn=np.full(len(idx), np.nan))
         split = date.fromisoformat(self.cfg["regimes"]["afrr_split"]["date"])
         return DayInput(
             n=len(idx), price={st: v[st] for st in STAGES},
@@ -50,7 +55,8 @@ class Strategy:
             e_up=v["e_up"], e_dn=v["e_dn"], soc0=ctx.soc0, fixed=ctx.fixed, band_fixed=ctx.band,
             ratio_up=v["ratio_up"] if ctx.day < split else None, end_price=self.end_price(v),
             headroom=self.headroom, cycle_reserve=self.cycle_reserve,
-            cycle_activation=self.cycle_activation, soc_margin=self.margin_profile(idx))
+            cycle_activation=self.cycle_activation, soc_margin=self.margin_profile(idx), interim_cost=self.interim_cost,
+            interim_exclusive=self.interim_exclusive)
 
     def margin_profile(self, idx: pd.DatetimeIndex) -> np.ndarray | None:
         """Planned charge margin from each limit per quarter-hour boundary, by local hour."""

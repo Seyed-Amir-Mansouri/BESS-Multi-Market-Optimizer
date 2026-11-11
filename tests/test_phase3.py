@@ -134,3 +134,27 @@ def test_hybrid_intraday_fallback_follows_the_actual_day_ahead_price(cfg, store)
     da = md.day(day)["da"].to_numpy(float)
     assert np.allclose(v["da"], da)
     assert np.allclose(v["ida1"], da)
+
+
+def _write_band(cfg, store, days):
+    rows = []
+    for d in days:
+        a, b = day_bounds_utc(d, cfg.tz)
+        t = pd.date_range(a, b, freq=QH, inclusive="left")
+        for series in ("afrr_band_price_up", "afrr_band_price_down"):
+            rows.append(pd.DataFrame({
+                "source": "test", "dataset": "test", "series": series, "delivery_start": t, "delivery_end": t + QH,
+                "resolution_min": 15, "value": 30.0, "unit": "EUR/MW",
+                "published_at": market_time(cfg, "afrr_capacity", "results", d), "pub_source": "rule",
+                "fetched_at": pd.Timestamp("2026-01-01", tz="UTC")}))
+    store.write(pd.concat(rows, ignore_index=True))
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_afrr_switch_controls_the_band(cfg, store, enabled):
+    cfg.raw["markets"]["afrr_capacity"]["enabled"] = enabled
+    _write(cfg, store, DAYS)
+    _write_band(cfg, store, DAYS)
+    res = run(cfg, store, "pf", DAYS[5], DAYS[6])
+    assert (res["afrr_capacity"].sum() > 0) == enabled
+    assert ((res["band_up_mw"] + res["band_dn_mw"]).sum() > 0) == enabled
