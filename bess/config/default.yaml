@@ -244,9 +244,9 @@ simulator:
     note: "continuous intraday at the OMIE trade price 60 to 120 min before delivery plus slippage, else day-ahead plus or minus spread; slippage and spread are assumptions"
   end_of_day: target
   cycle_limit: hard
-  cycle_reserve_mwh: 1.0
-  cycle_activation_factor: 1.25
-  soc_margin_mwh: 1.5
+  cycle_reserve_mwh: 0.0
+  cycle_activation_factor: 1.0
+  soc_margin_mwh: null
   solver_time_limit_s: 30
 
 # Fill
