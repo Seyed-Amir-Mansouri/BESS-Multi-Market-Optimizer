@@ -49,6 +49,7 @@ scenarios:
 hybrid:
   perfect: []
   closed: []
+  gates: {}
 
 stochastic:
   band: deterministic

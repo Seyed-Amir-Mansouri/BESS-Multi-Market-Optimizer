@@ -136,6 +136,21 @@ def test_hybrid_intraday_fallback_follows_the_actual_day_ahead_price(cfg, store)
     assert np.allclose(v["ida1"], da)
 
 
+def test_hybrid_sets_actual_values_only_at_chosen_gates(cfg, store):
+    from bess.market_simulator import Context
+    from bess.strategies.hybrid import Hybrid
+    cfg = _small(cfg)
+    cfg.raw["hybrid"] = {"perfect": ["ida2"], "gates": {"ida2": ["ida2"]}}
+    _write(cfg, store, DAYS, shift=lambda d: 10.0 * d.day)
+    md = MarketData(store, cfg, DAYS[0], DAYS[-1])
+    day = DAYS[10]
+    h = Hybrid(md, cfg)
+    act = md.day(day)["ida2"].to_numpy(float)
+    v = {g: h.forecasts(Context(day=day, gate=g, as_of=market_time(cfg, g, "gate", day), index=md.index(day), soc0=5.0))["ida2"] for g in ("da", "ida2")}
+    assert np.allclose(v["ida2"], act)
+    assert not np.allclose(v["da"], act)
+
+
 def _write_band(cfg, store, days):
     rows = []
     for d in days:

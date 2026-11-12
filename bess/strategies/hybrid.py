@@ -16,12 +16,14 @@ class Hybrid(LightGBM):
         h = cfg.get("hybrid") or {}
         self.perfect_inputs = list(h.get("perfect") or [])
         self.closed = list(h.get("closed") or [])
+        self.gates = {k: list(g) for k, g in (h.get("gates") or {}).items()}
 
     def override(self, v: dict, ctx: Context) -> None:
         """Set the chosen inputs to their actual values."""
         act = self.md.day(ctx.day)
         for t in self.perfect_inputs:
-            v[t] = act[t].to_numpy(dtype=float)
+            if t not in self.gates or ctx.gate in self.gates[t]:
+                v[t] = act[t].to_numpy(dtype=float)
 
     def forecasts(self, ctx: Context) -> dict:
         v = super().forecasts(ctx)
