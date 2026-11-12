@@ -106,7 +106,7 @@ markets:
     results: {day_offset: -1, time: "17:30"}
     coverage: {from: "00:00", to: "24:00"}
     price_limits: {min: 0.0, max: null}
-    enabled: true
+    enabled: false
     verified:
       gate: docs
       results: docs
@@ -235,7 +235,7 @@ simulator:
   soft_penalty_eur_per_mwh: 10000.0
   soc_tracking: true
   rebalance:
-    enabled: true
+    enabled: false
     lead_min: 60
     deadband_mwh: 0.5
     hours: 1.0
