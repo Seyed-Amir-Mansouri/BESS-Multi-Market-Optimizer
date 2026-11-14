@@ -263,9 +263,34 @@ def _scenario(lp: LP, inp: DayInput, bat: Battery, fees: Fees, w: float, r_up, r
     return pos, trades, socs
 
 
+def _deliverable(lp: LP, inp: DayInput, xs: list, stage: str, bat: Battery, penalty: float) -> None:
+    """Any mix of scenario positions in the last open market keeps the state of charge within limits."""
+    n, dt, P = inp.n, inp.dt, bat.power
+    fin = np.ones(n, bool)
+    for st in STAGES[STAGES.index(stage) + 1:]:
+        fin &= ~np.asarray(inp.open[st], bool)
+    k = n if fin.all() else int(np.argmin(fin))
+    if k == 0:
+        return
+    hi, lo = lp.var(k, -P, P), lp.var(k, -P, P)
+    for x in xs:
+        lp.con([(1.0, hi), (-1.0, x[:k])], 0.0, np.inf)
+        lp.con([(1.0, lo), (-1.0, x[:k])], -np.inf, 0.0)
+    c, d = lp.var(k, 0.0, P), lp.var(k, 0.0, P)
+    lp.con([(1.0, d), (-1.0, c), (-1.0, hi)], 0.0, 0.0)
+    down, up = lp.var(k + 1, -np.inf, np.inf), lp.var(k + 1, -np.inf, np.inf)
+    lp.con([(1.0, down[:1])], inp.soc0, inp.soc0)
+    lp.con([(1.0, up[:1])], inp.soc0, inp.soc0)
+    lp.con([(1.0, down[1:]), (-1.0, down[:-1]), (-bat.eta_c * dt, c), (dt / bat.eta_d, d)], 0.0, 0.0)
+    lp.con([(1.0, up[1:]), (-1.0, up[:-1]), (bat.eta_c * dt, lo)], 0.0, 0.0)
+    a, b = lp.var(k, 0.0, np.inf, cost=penalty), lp.var(k, 0.0, np.inf, cost=penalty)
+    lp.con([(1.0, down[1:]), (1.0, a)], bat.soc_min, np.inf)
+    lp.con([(1.0, up[1:]), (-1.0, b)], -np.inf, bat.soc_max)
+
+
 def solve_scenarios(inps: list, probs, bat: Battery, fees: Fees, soft_penalty: float = 1e4, time_limit: float = 30.0,
                     shortfall: float | None = None, curve_stage: str | None = None, light: bool = False,
-                    nonanticipative: bool = False) -> Plan:
+                    nonanticipative: bool = False, deliverable: bool = False) -> Plan:
     """Maximise expected profit over scenarios with a shared band and a price-monotone current-market curve."""
     probs = np.asarray(probs, float) / np.sum(probs)
     n = inps[0].n
@@ -291,6 +316,9 @@ def solve_scenarios(inps: list, probs, bat: Battery, fees: Fees, soft_penalty: f
             eq = np.isclose(price[ia, cols], price[ib, cols])
             lp.con([(1.0, S[ia, cols]), (-1.0, B[ia, cols]), (-1.0, S[ib, cols]), (1.0, B[ib, cols])],
                    np.where(eq, 0.0, -np.inf), 0.0)
+        if deliverable:
+            _deliverable(lp, inps[0], [b[0][curve] for b in blocks], curve, bat,
+                         shortfall if shortfall is not None else soft_penalty)
 
     sol, fun = lp.solve(time_limit=time_limit)
     position = {st: sum(w * sol[b[0][st]] for w, b in zip(probs, blocks)) for st in blocks[0][0]}
@@ -307,3 +335,4 @@ def solve_scenarios(inps: list, probs, bat: Battery, fees: Fees, soft_penalty: f
 def solve_day(inp: DayInput, bat: Battery, fees: Fees, soft_penalty: float = 1e4, time_limit: float = 30.0) -> Plan:
     """Maximise profit of the day over all stages not yet cleared."""
     return solve_scenarios([inp], [1.0], bat, fees, soft_penalty, time_limit)
+

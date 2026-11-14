@@ -70,6 +70,8 @@ hybrid:
 stochastic:
   band: deterministic
   nonanticipative: true
+  deliverable: false
+  gates: null
 
 battery:
   power_mw: 5.0

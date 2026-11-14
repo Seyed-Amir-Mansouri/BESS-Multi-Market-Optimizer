@@ -25,6 +25,8 @@ class Stochastic(LightGBM):
         sc = cfg.get("stochastic") or {}
         self.band_mode = str(sc.get("band", "deterministic"))
         self.nonant = bool(sc.get("nonanticipative", True))
+        self.deliverable = bool(sc.get("deliverable", False))
+        self.gates = sc.get("gates")
 
     def scenarios(self, ctx: Context, v: dict) -> tuple[list, np.ndarray]:
         slots = self.md.slot.loc[ctx.index].to_numpy()
@@ -32,6 +34,8 @@ class Stochastic(LightGBM):
         return self.gen.generate(ctx.day, v, kn, slots, self.source)
 
     def decide(self, ctx: Context):
+        if self.gates and ctx.gate not in self.gates:
+            return super().decide(ctx)
         v = self.forecasts(ctx)
         band = ctx.band
         if self.band_mode == "deterministic" and band is None:
@@ -48,7 +52,7 @@ class Stochastic(LightGBM):
         try:
             plan = solve_scenarios(inps, prob, self.bat, self.fees.on(ctx.day), self.soft, self.time_limit,
                                    shortfall=self.shortfall, curve_stage=cur, light=True,
-                                   nonanticipative=self.nonant)
+                                   nonanticipative=self.nonant, deliverable=self.deliverable)
         except RuntimeError:
             self.fallbacks += 1
             return self.bids(ctx, self.solve(ctx, v))
