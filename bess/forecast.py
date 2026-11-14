@@ -69,6 +69,17 @@ def load_predictions(cfg) -> pd.DataFrame:
     return pd.read_parquet(p) if p.exists() else pd.DataFrame()
 
 
+def quantiles_path(cfg):
+    p = cfg.path("forecast_dir")
+    p.mkdir(parents=True, exist_ok=True)
+    return p / str(cfg["forecast"].get("quantile_predictions") or "quantiles.parquet")
+
+
+def load_quantiles(cfg) -> pd.DataFrame:
+    p = quantiles_path(cfg)
+    return pd.read_parquet(p) if p.exists() else pd.DataFrame()
+
+
 def _folds(start, end, months: int) -> list:
     out = []
     a = pd.Timestamp(start).to_period("M").to_timestamp().date()
@@ -94,7 +105,8 @@ def _da_predictions(cfg, panel) -> np.ndarray:
     return out
 
 
-def walk_forward(cfg, store, start=None, end=None, targets=None, log=None, save=True, folds=None) -> pd.DataFrame:
+def walk_forward(cfg, store, start=None, end=None, targets=None, log=None, save=True, folds=None,
+                 quantiles=None) -> pd.DataFrame:
     """Train LightGBM per target and gate on past days only and predict each following block."""
     from datetime import date
 
@@ -115,6 +127,8 @@ def walk_forward(cfg, store, start=None, end=None, targets=None, log=None, save=
     embargo = timedelta(days=int(fc["embargo_days"]))
     params = dict(fc["lgbm"])
     targets = targets or list(fc["gates"])
+    if quantiles:
+        targets = [t for t in targets if t in PRICES]
     surprise = bool(fc.get("da_surprise"))
     da_pred = _da_predictions(cfg, panel) if surprise else None
     rows = []
@@ -138,7 +152,13 @@ def walk_forward(cfg, store, start=None, end=None, targets=None, log=None, save=
                     continue
                 tr = (day_col < f0 - embargo) & ~np.isnan(yt)
                 pred = np.full(te.sum(), np.nan)
-                if len(np.unique(day_col[tr])) >= int(fc["min_train_days"]):
+                qs = {}
+                if quantiles and len(np.unique(day_col[tr])) >= int(fc["min_train_days"]):
+                    off = base[te] if base is not None else 0.0
+                    for q in quantiles:
+                        m = LGBMRegressor(**{**params, "objective": "quantile", "alpha": q}).fit(X.loc[tr], yt[tr])
+                        qs[f"q{round(q * 100)}"] = m.predict(X.loc[te]) + off
+                elif len(np.unique(day_col[tr])) >= int(fc["min_train_days"]):
                     m = LGBMRegressor(**params).fit(X.loc[tr], yt[tr])
                     pred = m.predict(X.loc[te])
                     if base is not None:
@@ -147,12 +167,12 @@ def walk_forward(cfg, store, start=None, end=None, targets=None, log=None, save=
                     if surprise and target == "da" and gate == "da":
                         da_pred[te] = pred
                 rows.append(pd.DataFrame({"target": target, "gate": gate, "day": day_col[te].astype(str),
-                                          "slot": slot_col[te], "actual": y[te], "pred": pred, "naive": nv[te]}))
+                                          "slot": slot_col[te], "actual": y[te], "pred": pred, "naive": nv[te], **qs}))
             if log:
                 log(f"{target} @ {gate} done")
     out = pd.concat(rows, ignore_index=True)
     if save:
-        out.to_parquet(predictions_path(cfg), index=False)
+        out.to_parquet(quantiles_path(cfg) if quantiles else predictions_path(cfg), index=False)
     return out
 
 
