@@ -138,7 +138,27 @@ class Panel:
                 F[name] = np.repeat(self.recent_error(a, f, t, k), NS)
         if all(c in F for c in ("load_fc", "wind_fc", "solar_fc")):
             F["resid_fc"] = F["load_fc"] - F["wind_fc"] - F["solar_fc"]
+        if all(c in F for c in ("ree_d1_demand", "ree_d1_wind", "ree_d1_solar")):
+            F["ree_d1_resid"] = F["ree_d1_demand"] - F["ree_d1_wind"] - F["ree_d1_solar"]
+        if "gas" in F and "co2" in F:
+            fu = self.cfg.get("fuels") or {}
+            F["gas_cost"] = F["gas"] / float(fu.get("gas_efficiency", 0.55)) + float(fu.get("gas_co2_t_per_mwh", 0.37)) * F["co2"]
+        for c in fc.get("exog_day_lag") or []:
+            if c in self.val:
+                F[f"{c}_lag1_mean"] = np.repeat(self.last_day_mean(c, t), NS)
         return pd.DataFrame(F)
+
+    def last_day_mean(self, key: str, t: np.ndarray) -> np.ndarray:
+        """Mean of the latest day fully published by each day's gate."""
+        V, dp = self.val[key], self.day_pub[key]
+        m = _nanmean(V, 1)
+        out = np.full(len(self.days), np.nan)
+        for i in range(len(self.days)):
+            for j in range(i - 1, max(i - 7, -1), -1):
+                if dp[j] <= t[i]:
+                    out[i] = m[j]
+                    break
+        return out
 
     def recent_error(self, actual: str, forecast: str, t: np.ndarray, k: int) -> np.ndarray:
         """Mean actual minus forecast over the last k quarter-hours published by each day's gate."""
