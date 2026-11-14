@@ -277,6 +277,7 @@ simulator:
     headroom_mw: 0.0
     note: "continuous intraday at the OMIE trade price 60 to 120 min before delivery plus slippage, else day-ahead plus or minus spread; slippage and spread are assumptions"
   end_of_day: target
+  end_curve_points: 5
   cycle_limit: hard
   cycle_reserve_mwh: 0.0
   cycle_activation_factor: 1.0

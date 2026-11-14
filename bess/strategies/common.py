@@ -10,7 +10,7 @@ from ..battery import Battery, Fees
 from ..bids import COLUMNS, band_offers, curve, price_taking
 from ..config import Config
 from ..market_simulator import Context, coverage, hour_groups
-from ..optim import STAGES, DayInput, Plan, solve_day
+from ..optim import STAGES, DayInput, Plan, next_day_value, solve_day
 
 
 class Strategy:
@@ -54,6 +54,7 @@ class Strategy:
             cap_up=v["cap_up"], cap_dn=v["cap_dn"], share_up=v["share_up"], share_dn=v["share_dn"],
             e_up=v["e_up"], e_dn=v["e_dn"], soc0=ctx.soc0, fixed=ctx.fixed, band_fixed=ctx.band,
             ratio_up=v["ratio_up"] if ctx.day < split else None, end_price=self.end_price(v),
+            end_curve=self.end_curve(ctx, v),
             headroom=self.headroom, cycle_reserve=self.cycle_reserve,
             cycle_activation=self.cycle_activation, soc_margin=self.margin_profile(idx), interim_cost=self.interim_cost,
             interim_exclusive=self.interim_exclusive)
@@ -71,6 +72,22 @@ class Strategy:
             return None
         da = np.asarray(v["da"], float)
         return float(max(np.nanmean(da), 0.0)) if np.isfinite(da).any() else None
+
+    def end_curve(self, ctx: Context, v: dict) -> tuple | None:
+        """Value of the energy left at midnight from a one-day plan on today's day-ahead prices."""
+        sim = self.cfg["simulator"]
+        if sim.get("end_of_day", "target") != "curve":
+            return None
+        da = np.asarray(v["da"], float)
+        if not np.isfinite(da).any():
+            return None
+        key = (ctx.day, ctx.gate, float(np.nansum(da)))
+        if getattr(self, "_curve_key", None) != key:
+            da = np.where(np.isnan(da), np.nanmean(da), da)
+            socs = np.linspace(self.bat.soc_min, self.bat.soc_max, int(sim.get("end_curve_points", 5)))
+            self._curve = (socs, next_day_value(da, self.bat, self.fees.on(ctx.day), socs))
+            self._curve_key = key
+        return self._curve
 
     def solve(self, ctx: Context, v: dict) -> Plan:
         plan = solve_day(self.day_input(ctx, v), self.bat, self.fees.on(ctx.day), self.soft, self.time_limit)

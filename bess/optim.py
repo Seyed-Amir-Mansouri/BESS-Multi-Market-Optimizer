@@ -92,6 +92,7 @@ class DayInput:
     band_fixed: tuple | None = None
     ratio_up: np.ndarray | None = None
     end_price: float | None = None
+    end_curve: tuple | None = None
     headroom: float = 0.0
     cycle_reserve: float = 0.0
     cycle_activation: float = 1.0
@@ -242,13 +243,18 @@ def _scenario(lp: LP, inp: DayInput, bat: Battery, fees: Fees, w: float, r_up, r
             hd = lp.var(n, 0.0, np.inf, cost=w * soft_penalty)
             lp.con([(1.0, x), (1.0, r_up), (-1.0, hu)], -np.inf, P - inp.headroom)
             lp.con([(1.0, x), (-1.0, r_dn), (1.0, hd)], -P + inp.headroom, np.inf)
-        if inp.end_price is None:
+        if inp.end_curve is not None:
+            xs, vs = (np.asarray(a, float) for a in inp.end_curve)
+            seg = lp.var(len(xs) - 1, 0.0, np.diff(xs), cost=-w * np.diff(vs) / np.diff(xs))
+            lp.row([(1.0, soc[n:]), (-1.0, seg)], xs[0], xs[0])
+        elif inp.end_price is None:
             tp = lp.var(1, 0.0, np.inf, cost=w * soft_penalty)
             tn = lp.var(1, 0.0, np.inf, cost=w * soft_penalty)
         else:
             tp = lp.var(1, 0.0, np.inf, cost=-w * inp.end_price * bat.eta_d)
             tn = lp.var(1, 0.0, np.inf, cost=w * inp.end_price / bat.eta_c)
-        lp.con([(1.0, soc[n:]), (-1.0, tp), (1.0, tn)], bat.soc_target, bat.soc_target)
+        if inp.end_curve is None:
+            lp.con([(1.0, soc[n:]), (-1.0, tp), (1.0, tn)], bat.soc_target, bat.soc_target)
         if final:
             lp.add_cost(r_up, w * (bat.degradation + fees.toll_discharge) * a_up * dt)
             lp.add_cost(r_dn, w * (bat.degradation + fees.toll_charge) * a_dn * dt)
@@ -336,3 +342,20 @@ def solve_day(inp: DayInput, bat: Battery, fees: Fees, soft_penalty: float = 1e4
     """Maximise profit of the day over all stages not yet cleared."""
     return solve_scenarios([inp], [1.0], bat, fees, soft_penalty, time_limit)
 
+
+def next_day_value(price: np.ndarray, bat: Battery, fees: Fees, socs: np.ndarray, dt: float = 0.25) -> np.ndarray:
+    """Best one-market profit of the following day from each starting state of charge to the usual end target."""
+    p = _clean(price)
+    n = len(p)
+    out = []
+    for s0 in socs:
+        lp = LP()
+        c = lp.var(n, 0.0, bat.power, cost=(p + bat.degradation + fees.toll_charge + fees.market) * dt)
+        d = lp.var(n, 0.0, bat.power, cost=(-p + bat.degradation + fees.toll_discharge + fees.market) * dt)
+        soc = lp.var(n + 1, bat.soc_min, bat.soc_max)
+        lp.con([(1.0, soc[:1])], s0, s0)
+        lp.con([(1.0, soc[1:]), (-1.0, soc[:-1]), (-bat.eta_c * dt, c), (dt / bat.eta_d, d)], 0.0, 0.0)
+        lp.con([(1.0, soc[n:])], bat.soc_target, bat.soc_target)
+        lp.row([(dt, d)], -np.inf, bat.max_cycles * bat.energy)
+        out.append(-lp.solve()[1])
+    return np.array(out)
