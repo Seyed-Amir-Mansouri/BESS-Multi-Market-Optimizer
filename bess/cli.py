@@ -12,7 +12,7 @@ from .config import load_config, secret
 
 log = logging.getLogger("bess")
 
-SOURCES = ["omie", "mic", "esios", "entsoe", "weather"]
+SOURCES = ["omie", "mic", "esios", "entsoe", "weather", "fuels"]
 PROBES = {
     "omie": "https://www.omie.es/es/file-download?parents=marginalpdbc&filename=marginalpdbc_20250101.1",
     "esios": "https://api.esios.ree.es/indicators",
@@ -66,6 +66,9 @@ def cmd_download(cfg, args):
             elif src == "entsoe":
                 from .data.entsoe import EntsoeDownloader
                 counts = EntsoeDownloader(cfg, store).download(start, end, force=args.force)
+            elif src == "fuels":
+                from .data.fuels import FuelDownloader
+                counts = FuelDownloader(cfg, store).download(start, end, force=args.force)
             else:
                 from .data.weather import WeatherDownloader
                 counts = WeatherDownloader(cfg, store).download(start, end, force=args.force)
@@ -91,6 +94,9 @@ def cmd_parse(cfg, args):
         elif src == "entsoe":
             from .data.entsoe import EntsoeDownloader
             counts = EntsoeDownloader(cfg, store, offline=True).parse()
+        elif src == "fuels":
+            from .data.fuels import FuelDownloader
+            counts = FuelDownloader(cfg, store, offline=True).download(start, end)
         else:
             from .data.weather import WeatherDownloader
             counts = WeatherDownloader(cfg, store).parse()

@@ -195,6 +195,20 @@ esios:
     demand_actual:       {id: 1293, unit: "MW", expect: ["demanda"],   time_trunc: fifteen_minutes, time_agg: average, pub_rule: {type: after_delivery, minutes: 15, assumed: true}}
     wind_actual:         {id: 551,  unit: "MW", expect: ["eolica"],    time_trunc: fifteen_minutes, time_agg: average, pub_rule: {type: after_delivery, minutes: 60, assumed: true}}
     solar_pv_actual:     {id: 1295, unit: "MW", expect: ["solar"],     time_trunc: fifteen_minutes, time_agg: average, pub_rule: {type: after_delivery, minutes: 60, assumed: true}}
+    ree_d1_demand:       {id: 1775, unit: "MW", expect: ["demanda"], pub_rule: {type: day_offset, day_offset: -1, time: "11:00"}, role: "REE day-ahead forecast fixed before the DA gate"}
+    ree_d1_wind:         {id: 1777, unit: "MW", expect: ["eolica"],  pub_rule: {type: day_offset, day_offset: -1, time: "11:00"}, role: "REE day-ahead forecast fixed before the DA gate"}
+    ree_d1_solar:        {id: 1779, unit: "MW", expect: ["solar"],   pub_rule: {type: day_offset, day_offset: -1, time: "11:00"}, role: "REE day-ahead forecast fixed before the DA gate"}
+    ree_h3_demand:       {id: 1776, unit: "MW", expect: ["demanda"], pub_rule: {type: lead, hours: -3}, role: "REE forecast made three hours ahead"}
+    ree_h3_wind:         {id: 1778, unit: "MW", expect: ["eolica"],  pub_rule: {type: lead, hours: -3}, role: "REE forecast made three hours ahead"}
+    ree_h3_solar:        {id: 1780, unit: "MW", expect: ["solar"],   pub_rule: {type: lead, hours: -3}, role: "REE forecast made three hours ahead"}
+
+# Fuels
+fuels:
+  mibgas_url: "https://www.mibgas.es/en/file-access/MIBGAS_Data_{year}.csv?path=AGNO_{year}/XLS"
+  eua_url: "https://www.sendeco2.com/site_sendeco/service/download-csv.php?year={year}"
+  gas_efficiency: 0.55
+  gas_co2_t_per_mwh: 0.37
+  note: "gas: MIBGAS day-ahead index of the previous gas day; co2: last EUA close two days before delivery"
 
 # ENTSO-E
 entsoe:
