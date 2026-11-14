@@ -58,6 +58,9 @@ scenarios:
   count: 10
   seed: 0
   targets: [da, ida1, ida2, ida3]
+  conditional: false
+  min_half_width: 1.0
+  z_max: 8.0
 
 hybrid:
   perfect: []

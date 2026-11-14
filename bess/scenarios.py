@@ -60,7 +60,8 @@ class ScenarioGenerator:
         err = {}
         for t in targets:
             g, model = source[t]
-            e = self.errors.matrix(t, g, rows, model)[:, slots]
+            e = self.errors.scaled(t, g, rows, day) if model else None
+            e = (e if e is not None else self.errors.matrix(t, g, rows, model))[:, slots]
             err[t] = np.where(np.isnan(known[t])[None, :], e, 0.0)
         feats = []
         for t in targets:

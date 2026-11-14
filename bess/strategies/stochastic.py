@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from ..forecast import known, load_predictions
+from ..forecast import known, load_predictions, load_quantiles
 from ..market_simulator import Context
 from ..optim import STAGES, solve_scenarios
 from ..scenarios import ScenarioGenerator
@@ -17,7 +17,8 @@ class Stochastic(LightGBM):
 
     def __init__(self, md, cfg):
         super().__init__(md, cfg)
-        self.gen = ScenarioGenerator(ErrorModel(load_predictions(cfg), cfg), cfg)
+        quant = load_quantiles(cfg) if cfg["scenarios"].get("conditional") else None
+        self.gen = ScenarioGenerator(ErrorModel(load_predictions(cfg), cfg, quant), cfg)
         self.shortfall = float(cfg["simulator"]["shortfall_penalty_eur_per_mwh"])
         self.n_scen = []
         self.fallbacks = 0
