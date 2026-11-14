@@ -20,7 +20,17 @@ from .timeutils import daterange
 log = logging.getLogger(__name__)
 
 STRATEGIES = {"pf": PerfectForesight, "det": Deterministic, "ml": LightGBM, "sto": Stochastic, "hyb": Hybrid}
-END_COLS = ["da", "ida2", "cap_dn", "mic"]
+
+
+def end_cols(cfg: Config) -> list:
+    """Series every simulated day needs given the enabled markets."""
+    cols = ["da", "ida2"]
+    if (cfg["markets"].get("afrr_capacity") or {}).get("enabled", True):
+        cols.append("cap_dn")
+    rb = cfg["simulator"].get("rebalance") or {}
+    if rb.get("enabled") and rb.get("price") == "mic":
+        cols.append("mic")
+    return cols
 
 
 def excluded(cfg: Config, day: date) -> bool:
@@ -51,7 +61,8 @@ def test_set(cfg: Config, name: str) -> list[tuple[date, date]]:
 def simulate(cfg: Config, store: Store, strategy: str, start: date, end: date | None) -> tuple[pd.DataFrame, list]:
     """Daily results and bids of one continuous window starting at the target charge."""
     md = MarketData(store, cfg, start - timedelta(days=30), end or cfg.data_end())
-    end = min(end or md.last_day(END_COLS), md.last_day(END_COLS))
+    cols = end_cols(cfg)
+    end = min(end or md.last_day(cols), md.last_day(cols))
     sim = Simulator(md, cfg)
     strat = STRATEGIES[strategy](md, cfg)
     soc_plan = soc_actual = Battery.from_config(cfg).soc_target

@@ -141,12 +141,12 @@ def cmd_backtest(cfg, args):
 def cmd_live(cfg, args):
     from datetime import timedelta
 
-    from .backtest import END_COLS, run
+    from .backtest import end_cols, run
     from .forecast import train_once
     from .market_simulator import MarketData
     store = _store(cfg)
     md = MarketData(store, cfg, cfg.data_end() - timedelta(days=60), cfg.data_end())
-    end = date.fromisoformat(args.end) if args.end else md.last_day(END_COLS)
+    end = date.fromisoformat(args.end) if args.end else md.last_day(end_cols(cfg))
     start = end - timedelta(days=args.days - 1)
     print(f"training on days before {start - timedelta(days=int(cfg['forecast']['embargo_days']))}, testing {start} .. {end}")
     _, live = train_once(cfg, store, start, end, log=log.info)
