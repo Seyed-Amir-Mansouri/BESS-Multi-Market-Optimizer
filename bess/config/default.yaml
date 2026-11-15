@@ -279,7 +279,7 @@ simulator:
     spread_eur_per_mwh: 10.0
     price: spread
     mic_slippage_eur_per_mwh: 2.0
-    headroom_mw: 0.0
+    headroom_mw: 0.5
     note: "continuous intraday at the OMIE trade price 60 to 120 min before delivery plus slippage, else day-ahead plus or minus spread; slippage and spread are assumptions"
   end_of_day: target
   end_curve_points: 5
