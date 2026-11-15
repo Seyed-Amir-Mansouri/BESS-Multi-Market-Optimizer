@@ -238,3 +238,20 @@ def test_planned_charge_keeps_the_margin_from_both_limits(cfg):
     kept = solve_day(inp, bat, NO_FEES)
     assert free.soc.min() < 0.5 and free.soc.max() > 9.5
     assert kept.soc[1:].min() >= 1.5 - 1e-6 and kept.soc.max() <= 8.5 + 1e-6
+
+
+def test_settle_charges_shortfall_at_the_imbalance_price(cfg):
+    from bess.market_simulator import settle
+    bat = Battery.from_config(cfg)
+    n = 8
+    idx = pd.date_range("2025-11-20", periods=n, freq="15min", tz="UTC")
+    act = pd.DataFrame({c: 50.0 for c in ["da", "ida1", "ida2", "ida3", "cap_up", "cap_dn", "e_up", "e_dn"]}, index=idx)
+    act["share_up"] = 0.0
+    act["share_dn"] = 0.0
+    z = np.zeros(n)
+    short = np.full(n, 200.0)
+    long_ = np.full(n, 20.0)
+    sell, _ = settle(act, {"da": np.full(n, 4.0)}, z, z, 1.0, bat, NO_FEES, 100.0, imbalance=(short, long_))
+    assert sell["penalty"] == pytest.approx(-sell["shortfall_mwh"] * 200.0)
+    buy, _ = settle(act, {"da": np.full(n, -4.0)}, z, z, 9.0, bat, NO_FEES, 100.0, imbalance=(short, long_))
+    assert buy["penalty"] == pytest.approx(buy["shortfall_mwh"] * 20.0)

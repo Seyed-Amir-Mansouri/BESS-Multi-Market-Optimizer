@@ -54,6 +54,7 @@ class MarketData:
         fp["ratio_up"] = pub[["sys_up", "sys_dn"]].max(axis=1)
         self.values, self.pubs = f[COLS], fp[COLS]
         self.mic = val["mic"] if "mic" in val else pd.Series(np.nan, index=index)
+        self.imb = pd.DataFrame({k: val[k] if k in val else np.nan for k in ("imb_short", "imb_long")}, index=index)
         self.day_of = days
         self.slot = pd.Series((local.hour * 60 + local.minute) // 15, index=index)
         ok = self.values.notna()
@@ -173,7 +174,7 @@ def rebalance(index: pd.DatetimeIndex, x: np.ndarray, a_up: np.ndarray, a_dn: np
 def settle(act: pd.DataFrame, trades: dict, r_up: np.ndarray, r_dn: np.ndarray, soc0: float, bat: Battery, fees: Fees,
            penalty: float, dt: float = 0.25, tol: float = 1e-3, rebal: np.ndarray | None = None,
            spread: float = 0.0, budget: float | None = None, mic: np.ndarray | None = None,
-           slippage: float = 0.0) -> tuple[dict, np.ndarray]:
+           slippage: float = 0.0, imbalance: tuple | None = None) -> tuple[dict, np.ndarray]:
     """Realised cash flows and state of charge of one day."""
     n = len(act)
     out = {}
@@ -212,19 +213,29 @@ def settle(act: pd.DataFrame, trades: dict, r_up: np.ndarray, r_dn: np.ndarray, 
     soc = np.empty(n + 1)
     soc[0] = soc0
     miss = np.zeros(n)
+    short = np.zeros(n)
     used = 0.0
     for i in range(n):
         cut = 0.0
         if budget is not None and dis[i] * dt > budget - used + tol:
             cut = dis[i] - max(budget - used, 0.0) / dt
             dis[i] -= cut
+        d0 = dis[i]
         soc[i + 1], ch[i], dis[i], miss[i] = _step(soc[i], ch[i], dis[i], bat, dt, tol)
+        short[i] = (d0 - dis[i]) * dt + cut * dt
         miss[i] += cut * dt
         used += dis[i] * dt
     out["degradation"] = -float((ch + dis).sum() * dt * bat.degradation)
     out["fees"] = -float(dis.sum() * dt * fees.toll_discharge + ch.sum() * dt * fees.toll_charge
                          + traded * fees.market)
-    out["penalty"] = -float((miss * (np.abs(da) + penalty)).sum())
+    if imbalance is None:
+        out["penalty"] = -float((miss * (np.abs(da) + penalty)).sum())
+    else:
+        long_ = miss - short
+        ps = np.where(np.isnan(imbalance[0]), np.abs(da) + penalty, imbalance[0])
+        pl = np.where(np.isnan(imbalance[1]), da, imbalance[1])
+        lost = e_up * np.minimum(short, a_up * dt) - e_dn * np.minimum(long_, a_dn * dt)
+        out["penalty"] = -float((short * ps - long_ * pl + lost).sum())
     out["profit"] = sum(out[k] for k in STAGES + ["rebalance", "afrr_capacity", "afrr_energy", "degradation", "fees", "tax", "penalty"])
     out["charge_mwh"] = float(ch.sum() * dt)
     out["discharge_mwh"] = float(dis.sum() * dt)
@@ -261,6 +272,12 @@ class Simulator:
             return fallback
         k = int((idx < as_of).sum())
         return float(np.clip(soc[k] + plan[-1] - plan[k], self.bat.soc_min, self.bat.soc_max))
+
+    def _imbalance(self, idx):
+        if self.cfg["simulator"].get("shortfall_price", "fixed") != "imbalance":
+            return None
+        im = self.md.imb.loc[idx]
+        return im["imb_short"].to_numpy(float), im["imb_long"].to_numpy(float)
 
     def _rebalance(self, idx, act, x, band, soc0, plans):
         r_up, r_dn = band if band is not None else (np.zeros(len(idx)), np.zeros(len(idx)))
@@ -316,7 +333,8 @@ class Simulator:
         res, soc = settle(act, trades, band[0], band[1], soc_actual, self.bat, self.fees.on(day), self.penalty,
                           rebal=q, spread=float(self.rcfg.get("spread_eur_per_mwh", 0.0)), budget=self.budget,
                           mic=self.md.mic.loc[idx].to_numpy(float) if self.rcfg.get("price") == "mic" else None,
-                          slippage=float(self.rcfg.get("mic_slippage_eur_per_mwh", 0.0)))
+                          slippage=float(self.rcfg.get("mic_slippage_eur_per_mwh", 0.0)),
+                          imbalance=self._imbalance(idx))
         plan_soc = plans[-1][1] if plans else None
         self.prev = (idx, soc, plan_soc)
         res["day"] = str(day)

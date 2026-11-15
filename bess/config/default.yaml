@@ -194,6 +194,8 @@ esios:
     afrr_energy_price_down: {id: 683, unit: "EUR/MWh", expect: ["secundaria", "bajar"],                 pub_rule: {type: after_delivery, minutes: 60, assumed: true}}
     afrr_energy_up_mwh:   {id: 680, unit: "MWh", expect: ["energia activada", "secundaria", "subir"],   pub_rule: {type: after_delivery, minutes: 60, assumed: true}}
     afrr_energy_down_mwh: {id: 681, unit: "MWh", expect: ["energia activada", "secundaria", "bajar"],   pub_rule: {type: after_delivery, minutes: 60, assumed: true}}
+    imbalance_price_long:  {id: 686, unit: "EUR/MWh", expect: ["desvios", "subir"],                   pub_rule: {type: after_delivery, minutes: 60, assumed: true}}
+    imbalance_price_short: {id: 687, unit: "EUR/MWh", expect: ["desvios", "bajar"],                   pub_rule: {type: after_delivery, minutes: 60, assumed: true}}
     demand_forecast:     {id: 460,  unit: "MW", expect: ["demanda"],   pub_rule: {type: day_offset, day_offset: -1, time: "11:00", assumed: true}}
     wind_forecast:       {id: 541,  unit: "MW", expect: ["eolica"],    pub_rule: {type: day_offset, day_offset: -1, time: "11:00", assumed: true}}
     solar_pv_forecast:   {id: 542,  unit: "MW", expect: ["solar"],     pub_rule: {type: day_offset, day_offset: -1, time: "11:00", assumed: true}}
@@ -262,8 +264,11 @@ simulator:
     e_dn: afrr_energy_price_down
     act_up: afrr_energy_up_mwh
     act_dn: afrr_energy_down_mwh
+    imb_short: imbalance_price_short
+    imb_long: imbalance_price_long
   activation_days: 7
   shortfall_penalty_eur_per_mwh: 100.0
+  shortfall_price: imbalance
   soft_penalty_eur_per_mwh: 10000.0
   soc_tracking: true
   rebalance:
