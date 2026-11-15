@@ -246,7 +246,8 @@ class Simulator:
         self.bat, self.fees = Battery.from_config(cfg), Fees.from_config(cfg)
         self.penalty = float(cfg["simulator"]["shortfall_penalty_eur_per_mwh"])
         self.tracking = bool(cfg["simulator"].get("soc_tracking", False))
-        self.rcfg = cfg["simulator"].get("rebalance") or {}
+        afrr = bool(cfg["markets"]["afrr_capacity"].get("enabled", True))
+        self.rcfg = (cfg["simulator"].get("rebalance") or {}) if afrr else {}
         hard = str(cfg["simulator"].get("cycle_limit", "soft")) == "hard"
         self.budget = self.bat.max_cycles * self.bat.energy if hard else None
         self.prev = None

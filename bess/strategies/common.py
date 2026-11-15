@@ -25,13 +25,13 @@ class Strategy:
         self.time_limit = float(sim["solver_time_limit_s"])
         self.plan_end = None
         self.plan_soc = None
-        rb = sim.get("rebalance") or {}
+        self.afrr = bool(cfg["markets"]["afrr_capacity"].get("enabled", True))
+        rb = (sim.get("rebalance") or {}) if self.afrr else {}
         self.headroom = float(rb.get("headroom_mw", 0.0)) if rb.get("enabled") and not self.perfect else 0.0
         self.cycle_reserve = 0.0 if self.perfect else float(sim.get("cycle_reserve_mwh", 0.0))
         self.cycle_activation = 1.0 if self.perfect else float(sim.get("cycle_activation_factor", 1.0))
-        m = None if self.perfect else sim.get("soc_margin_mwh")
+        m = None if self.perfect or not self.afrr else sim.get("soc_margin_mwh")
         self.soc_margin = None if m is None else np.resize(np.asarray(m, float), 24)
-        self.afrr = bool(cfg["markets"]["afrr_capacity"].get("enabled", True))
         self.interim_cost = float(sim.get("interim_cycle_cost_eur_per_mwh", 0.0))
         self.interim_exclusive = bool(sim.get("interim_exclusive", False))
 

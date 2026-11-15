@@ -11,7 +11,7 @@ from scipy.sparse import coo_matrix
 from .battery import Battery, Fees
 
 STAGES = ["da", "ida1", "ida2", "ida3"]
-BAND_FROM = 1
+BAND_FROM = 2
 
 
 class LP:

@@ -267,12 +267,12 @@ simulator:
   soft_penalty_eur_per_mwh: 10000.0
   soc_tracking: true
   rebalance:
-    enabled: false
+    enabled: true
     lead_min: 60
     deadband_mwh: 0.5
     hours: 1.0
     spread_eur_per_mwh: 10.0
-    price: mic
+    price: spread
     mic_slippage_eur_per_mwh: 2.0
     headroom_mw: 0.0
     note: "continuous intraday at the OMIE trade price 60 to 120 min before delivery plus slippage, else day-ahead plus or minus spread; slippage and spread are assumptions"
@@ -281,7 +281,7 @@ simulator:
   cycle_limit: hard
   cycle_reserve_mwh: 0.0
   cycle_activation_factor: 1.0
-  soc_margin_mwh: null
+  soc_margin_mwh: 2.0
   interim_cycle_cost_eur_per_mwh: 0.0
   interim_exclusive: true
   solver_time_limit_s: 30
