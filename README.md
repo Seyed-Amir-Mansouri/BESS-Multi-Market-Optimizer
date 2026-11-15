@@ -139,6 +139,12 @@ ml earns 6.6% more than det (90% range +€5.3k to +€14.0k over weekly resampl
 
 Tested and not adopted: deliberate imbalance positions from a forecast of the system direction (loses money once the energy is bought back, as about 70% of quarters settle at a dual price), and rolling intrinsic trading on the continuous intraday tape after IDA3 (under €1k gain on the quick set with higher shortfall cost).
 
+Where the gap to perfect foresight sits: on the quick set ml makes €100.3k; with the true IDA2 and IDA3 prices given only at their own gates it makes €100.5k, and with them given from the aFRR gate it makes €136.3k. The gap is decided when the aFRR band is sized at 17:00 D-1, before the information that moves IDA2 and IDA3 is published. Also tested and not adopted:
+
+- Intraday moves forecast from the latest auction price plus the ENTSO-E intraday wind and solar forecast (published overnight, before the IDA3 gate). Direction accuracy rises from 49.5% to 55.3% at IDA3, but eval profit only from €156.8k to €157.1k.
+- Band prices cut by recent intraday price volatility at the aFRR gate (€82k to €97k on quick).
+- Continuous intraday trades before 17:00 D-1 (no information beyond IDA1) and newly published ENTSO-E unavailability between gates (correlation about 0.03 with the IDA moves).
+
 ## Data model
 
 All series share one long-format Parquet schema under `data_store/clean/<dataset>/<YYYY-MM>.parquet`:
