@@ -174,6 +174,7 @@ def test_headroom_keeps_power_free_next_to_the_band(cfg):
     inp = _input(n, np.full(n, 50.0), cap=80.0)
     free = solve_day(inp, bat, NO_FEES)
     inp.headroom = 1.0
+    inp.headroom_sell = 1.0
     kept = solve_day(inp, bat, NO_FEES)
     assert free.r_up.max() > bat.power - 1.0 + 0.1
     assert np.all(kept.position["ida3"] + kept.r_up <= bat.power - 1.0 + 1e-6)
@@ -255,3 +256,13 @@ def test_settle_charges_shortfall_at_the_imbalance_price(cfg):
     assert sell["penalty"] == pytest.approx(-sell["shortfall_mwh"] * 200.0)
     buy, _ = settle(act, {"da": np.full(n, -4.0)}, z, z, 9.0, bat, NO_FEES, 100.0, imbalance=(short, long_))
     assert buy["penalty"] == pytest.approx(buy["shortfall_mwh"] * 20.0)
+
+
+def test_buy_side_headroom_leaves_the_sell_side_free(cfg):
+    bat = Battery.from_config(cfg)
+    n = 8
+    inp = _input(n, np.full(n, 50.0), cap=80.0)
+    inp.headroom = 1.0
+    kept = solve_day(inp, bat, NO_FEES)
+    assert np.all(kept.position["ida3"] - kept.r_dn >= -bat.power + 1.0 - 1e-6)
+    assert (kept.position["ida3"] + kept.r_up).max() > bat.power - 1.0 + 0.1

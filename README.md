@@ -118,7 +118,7 @@ The quick set has two one-week windows per season. Its capture rates come within
 
 * **Charge tracking** (`simulator.soc_tracking`): each gate starts from the metered charge at the gate plus the rest of the previous plan.
 * **Rebalancing** (`simulator.rebalance`): when activations move the metered charge more than `deadband_mwh` from the latest plan, the battery trades in the continuous intraday market to steer back. Trades are decided `lead_min` before delivery, use only power left free by the market position and the aFRR band, and are priced at the day-ahead price plus or minus `spread_eur_per_mwh`. The spread and lead time are assumptions.
-* **Headroom** (`simulator.rebalance.headroom_mw`, 0.5 MW): power the optimizer keeps free next to the band so rebalancing can still trade when the band covers the full power.
+* **Headroom** (`simulator.rebalance.headroom_mw`, 0.5 MW): buying power the optimizer keeps free next to the down band, so rebalancing can still recharge when the band covers the full power. `headroom_sell_mw` (default 0) does the same for selling; shortfalls come from an empty battery, so selling headroom costs profit without lowering them.
 * **Margin** (`simulator.soc_margin_mwh`, 2 MWh): charge kept away from empty and full while aFRR is on.
 * **Shortfall settlement** (`simulator.shortfall_price: imbalance`): energy the battery cannot deliver is bought at the eSIOS short imbalance price (687), energy it cannot absorb is sold at the long imbalance price (686), and undelivered aFRR activation energy is not paid. `fixed` charges the day-ahead price plus `shortfall_penalty_eur_per_mwh` instead.
 * **aFRR activation** is taken pro rata: the unit's share of its band equals Spain's activated aFRR energy (680/681) over Spain's awarded band (632/633). A unit activated 1.5 times its pro-rata share misses about six times more energy, so check this against the unit's own history.
@@ -132,10 +132,12 @@ Eval set (83 days, one week per month, Nov 2025 to Oct 2026), defaults with aFRR
 | Strategy | Profit | Share of perfect foresight | Shortfall cost |
 |---|---|---|---|
 | Perfect foresight | €293,950 | 100% | 0% |
-| ml | €152,754 | 52.0% | 1.5% |
-| det | €145,294 | 49.4% | 1.0% |
+| ml | €156,827 | 53.4% | 1.2% |
+| det | €147,161 | 50.1% | 1.0% |
 
-ml earns 5.1% more than det (90% range +€2.9k to +€12.1k over weekly resamples) and is ahead in 10 of 12 weeks. Without headroom ml earns €161,328 but its shortfall cost rises to 2.8% of profit.
+ml earns 6.6% more than det (90% range +€5.3k to +€14.0k over weekly resamples) and is ahead in 10 of 12 weeks. With 0.5 MW of headroom on both sides ml earns €152,754 (1.5%); with none it earns €161,328 but its shortfall cost rises to 2.8% of profit.
+
+Tested and not adopted: deliberate imbalance positions from a forecast of the system direction (loses money once the energy is bought back, as about 70% of quarters settle at a dual price), and rolling intrinsic trading on the continuous intraday tape after IDA3 (under €1k gain on the quick set with higher shortfall cost).
 
 ## Data model
 
