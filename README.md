@@ -144,6 +144,10 @@ Where the gap to perfect foresight sits: on the quick set ml makes €100.3k; wi
 - Intraday moves forecast from the latest auction price plus the ENTSO-E intraday wind and solar forecast (published overnight, before the IDA3 gate). Direction accuracy rises from 49.5% to 55.3% at IDA3, but eval profit only from €156.8k to €157.1k.
 - Band prices cut by recent intraday price volatility at the aFRR gate (€82k to €97k on quick).
 - Continuous intraday trades before 17:00 D-1 (no information beyond IDA1) and newly published ENTSO-E unavailability between gates (correlation about 0.03 with the IDA moves).
+- ECMWF IFS forecast runs (Open-Meteo single runs, 9 locations, each run used from 7 h after its start) as gate-timed IDA1 to IDA3 features: IDA2 direction unchanged at 54.9%, quick €97.9k against €100.3k.
+- Two-stage Monte Carlo band sizing at 17:00 D-1 (€97.4k and €95.2k on quick) and deliverable scenario bid curves at IDA2 and IDA3 (€95.9k).
+- A daily policy learned walk-forward from 693 days of backtests that picks the band price factor (0.8, 1.0, 1.25) and the trust in the IDA forecasts before the LP runs (fitted Q with LightGBM and a recent-winner bandit): eval €155.5k to €156.5k against €156.1k. Choosing the best action each day with hindsight gives only €162.2k, so the gap to perfect foresight is missing price information, not the optimisation.
+- Rebalancing closer than 60 minutes: Spain keeps the 60-minute continuous intraday gate closure until 2029 and the OMIE trades show none later.
 
 ## Data model
 
