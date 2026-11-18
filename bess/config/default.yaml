@@ -279,9 +279,13 @@ simulator:
     spread_eur_per_mwh: 10.0
     price: spread
     mic_slippage_eur_per_mwh: 2.0
-    headroom_mw: 0.5
+    headroom_mw: 0.0
     headroom_sell_mw: 0.0
     note: "continuous intraday at the OMIE trade price 60 to 120 min before delivery plus slippage, else day-ahead plus or minus spread; slippage and spread are assumptions"
+  energy_offer:
+    guard_mwh: 2.0
+    lag_qh: 2
+    note: "aFRR energy offers are priced out of merit for a quarter-hour when the charge metered lag_qh quarter-hours earlier is within guard_mwh of the limit; null keeps every offer in merit"
   end_of_day: target
   end_curve_points: 5
   cycle_limit: hard

@@ -125,6 +125,14 @@ def _step(s: float, ch: float, dis: float, bat: Battery, dt: float, tol: float) 
     return min(max(s, bat.soc_min), bat.soc_max), ch, dis, miss
 
 
+def offered(soc: np.ndarray, i: int, bat: Battery, guard: float | None, lag: int) -> tuple[bool, bool]:
+    """Whether the upward and downward aFRR energy offers of quarter-hour i stay in merit given the charge metered lag quarter-hours earlier."""
+    if guard is None:
+        return True, True
+    ref = soc[max(i - lag, 0)]
+    return ref - bat.soc_min >= guard, bat.soc_max - ref >= guard
+
+
 def activations(act: pd.DataFrame, r_up: np.ndarray, r_dn: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Activated aFRR power up and down of the reserved band."""
     a_up = np.nan_to_num(act["share_up"].to_numpy()) * r_up
@@ -134,7 +142,7 @@ def activations(act: pd.DataFrame, r_up: np.ndarray, r_dn: np.ndarray) -> tuple[
 
 def rebalance(index: pd.DatetimeIndex, x: np.ndarray, a_up: np.ndarray, a_dn: np.ndarray, r_up: np.ndarray,
               r_dn: np.ndarray, soc0: float, plans: list, bat: Battery, rcfg: dict, dt: float = 0.25,
-              tol: float = 1e-3, budget: float | None = None) -> np.ndarray:
+              tol: float = 1e-3, budget: float | None = None, guard: float | None = None, guard_lag: int = 2) -> np.ndarray:
     """Continuous intraday trades that steer the metered charge back toward the latest plan, positive when selling."""
     n = len(x)
     q = np.zeros(n)
@@ -166,7 +174,8 @@ def rebalance(index: pd.DatetimeIndex, x: np.ndarray, a_up: np.ndarray, a_dn: np
                     sell_room = min(sell_room, max(budget - spent, 0.0) / dt)
                 q[i] = float(np.clip(want, -buy_room, sell_room))
         y = x[i] + q[i]
-        soc[i + 1], _, dis, _ = _step(soc[i], max(-y, 0) + a_dn[i], max(y, 0) + a_up[i], bat, dt, tol)
+        up, dn = offered(soc, i, bat, guard, guard_lag)
+        soc[i + 1], _, dis, _ = _step(soc[i], max(-y, 0) + a_dn[i] * dn, max(y, 0) + a_up[i] * up, bat, dt, tol)
         used[i + 1] = used[i] + dis * dt
     return q
 
@@ -174,7 +183,8 @@ def rebalance(index: pd.DatetimeIndex, x: np.ndarray, a_up: np.ndarray, a_dn: np
 def settle(act: pd.DataFrame, trades: dict, r_up: np.ndarray, r_dn: np.ndarray, soc0: float, bat: Battery, fees: Fees,
            penalty: float, dt: float = 0.25, tol: float = 1e-3, rebal: np.ndarray | None = None,
            spread: float = 0.0, budget: float | None = None, mic: np.ndarray | None = None,
-           slippage: float = 0.0, imbalance: tuple | None = None) -> tuple[dict, np.ndarray]:
+           slippage: float = 0.0, imbalance: tuple | None = None, guard: float | None = None,
+           guard_lag: int = 2) -> tuple[dict, np.ndarray]:
     """Realised cash flows and state of charge of one day."""
     n = len(act)
     out = {}
@@ -205,9 +215,6 @@ def settle(act: pd.DataFrame, trades: dict, r_up: np.ndarray, r_dn: np.ndarray, 
     out["afrr_capacity"] = float(np.nansum(cap_up * r_up + cap_dn * r_dn) * dt)
     a_up, a_dn = activations(act, r_up, r_dn)
     e_up, e_dn = np.nan_to_num(act["e_up"].to_numpy()), np.nan_to_num(act["e_dn"].to_numpy())
-    out["afrr_energy"] = float((e_up * a_up - e_dn * a_dn).sum() * dt)
-    out["tax"] = -fees.ivpee * ivpee_base(revenue, np.nan_to_num(cap_up), np.nan_to_num(cap_dn), r_up, r_dn,
-                                          a_up, a_dn, e_up, e_dn, dt)
     ch = np.maximum(-x, 0) + a_dn
     dis = np.maximum(x, 0) + a_up
     soc = np.empty(n + 1)
@@ -216,6 +223,13 @@ def settle(act: pd.DataFrame, trades: dict, r_up: np.ndarray, r_dn: np.ndarray, 
     short = np.zeros(n)
     used = 0.0
     for i in range(n):
+        up, dn = offered(soc, i, bat, guard, guard_lag)
+        if not up:
+            dis[i] -= a_up[i]
+            a_up[i] = 0.0
+        if not dn:
+            ch[i] -= a_dn[i]
+            a_dn[i] = 0.0
         cut = 0.0
         if budget is not None and dis[i] * dt > budget - used + tol:
             cut = dis[i] - max(budget - used, 0.0) / dt
@@ -225,6 +239,9 @@ def settle(act: pd.DataFrame, trades: dict, r_up: np.ndarray, r_dn: np.ndarray, 
         short[i] = (d0 - dis[i]) * dt + cut * dt
         miss[i] += cut * dt
         used += dis[i] * dt
+    out["afrr_energy"] = float((e_up * a_up - e_dn * a_dn).sum() * dt)
+    out["tax"] = -fees.ivpee * ivpee_base(revenue, np.nan_to_num(cap_up), np.nan_to_num(cap_dn), r_up, r_dn,
+                                          a_up, a_dn, e_up, e_dn, dt)
     out["degradation"] = -float((ch + dis).sum() * dt * bat.degradation)
     out["fees"] = -float(dis.sum() * dt * fees.toll_discharge + ch.sum() * dt * fees.toll_charge
                          + traded * fees.market)
@@ -261,6 +278,9 @@ class Simulator:
         self.rcfg = (cfg["simulator"].get("rebalance") or {}) if afrr else {}
         hard = str(cfg["simulator"].get("cycle_limit", "soft")) == "hard"
         self.budget = self.bat.max_cycles * self.bat.energy if hard else None
+        g = (cfg["simulator"].get("energy_offer") or {}) if afrr else {}
+        self.guard = float(g["guard_mwh"]) if g.get("guard_mwh") is not None else None
+        self.guard_lag = int(g.get("lag_qh", 2))
         self.prev = None
 
     def soc_estimate(self, as_of: pd.Timestamp, fallback: float) -> float:
@@ -285,7 +305,8 @@ class Simulator:
         r_up = np.where(np.isnan(cap_up), 0.0, r_up)
         r_dn = np.where(np.isnan(cap_dn), 0.0, r_dn)
         a_up, a_dn = activations(act, r_up, r_dn)
-        return rebalance(idx, x, a_up, a_dn, r_up, r_dn, soc0, plans, self.bat, self.rcfg, budget=self.budget)
+        return rebalance(idx, x, a_up, a_dn, r_up, r_dn, soc0, plans, self.bat, self.rcfg, budget=self.budget,
+                         guard=self.guard, guard_lag=self.guard_lag)
 
     def run_day(self, day: date, strategy, soc_plan: float, soc_actual: float):
         idx = self.md.index(day)
@@ -334,7 +355,7 @@ class Simulator:
                           rebal=q, spread=float(self.rcfg.get("spread_eur_per_mwh", 0.0)), budget=self.budget,
                           mic=self.md.mic.loc[idx].to_numpy(float) if self.rcfg.get("price") == "mic" else None,
                           slippage=float(self.rcfg.get("mic_slippage_eur_per_mwh", 0.0)),
-                          imbalance=self._imbalance(idx))
+                          imbalance=self._imbalance(idx), guard=self.guard, guard_lag=self.guard_lag)
         plan_soc = plans[-1][1] if plans else None
         self.prev = (idx, soc, plan_soc)
         res["day"] = str(day)

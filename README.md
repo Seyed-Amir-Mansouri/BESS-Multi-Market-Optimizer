@@ -118,12 +118,13 @@ The quick set has two one-week windows per season. Its capture rates come within
 
 * **Charge tracking** (`simulator.soc_tracking`): each gate starts from the metered charge at the gate plus the rest of the previous plan.
 * **Rebalancing** (`simulator.rebalance`): when activations move the metered charge more than `deadband_mwh` from the latest plan, the battery trades in the continuous intraday market to steer back. Trades are decided `lead_min` before delivery, use only power left free by the market position and the aFRR band, and are priced at the day-ahead price plus or minus `spread_eur_per_mwh`. The spread and lead time are assumptions.
-* **Headroom** (`simulator.rebalance.headroom_mw`, 0.5 MW): buying power the optimizer keeps free next to the down band, so rebalancing can still recharge when the band covers the full power. `headroom_sell_mw` (default 0) does the same for selling; shortfalls come from an empty battery, so selling headroom costs profit without lowering them.
+* **Headroom** (`simulator.rebalance.headroom_mw`, default 0): buying power the optimizer can keep free next to the down band, so rebalancing can still recharge when the band covers the full power. With the 2 MWh energy offer guard it is not needed. `headroom_sell_mw` (default 0) does the same for selling; shortfalls come from an empty battery, so selling headroom costs profit without lowering them.
 * **Margin** (`simulator.soc_margin_mwh`, 2 MWh): charge kept away from empty and full while aFRR is on.
 * **Shortfall settlement** (`simulator.shortfall_price: imbalance`): energy the battery cannot deliver is bought at the eSIOS short imbalance price (687), energy it cannot absorb is sold at the long imbalance price (686), and undelivered aFRR activation energy is not paid. `fixed` charges the day-ahead price plus `shortfall_penalty_eur_per_mwh` instead.
+* **Energy offer guard** (`simulator.energy_offer`, 2 MWh, 2 quarter-hours): aFRR energy offers are submitted about 25 minutes before delivery. When the charge metered two quarter-hours earlier is within `guard_mwh` of empty, the upward energy offer is priced out of merit for that quarter-hour, and likewise the downward offer near full. The band is still offered and paid; only the activation energy of that quarter-hour is lost. This assumes REE accepts high-priced energy offers for awarded band. `guard_mwh: null` keeps every offer in merit.
 * **aFRR activation** is taken pro rata: the unit's share of its band equals Spain's activated aFRR energy (680/681) over Spain's awarded band (632/633). A unit activated 1.5 times its pro-rata share misses about six times more energy, so check this against the unit's own history.
 
-Rebalancing, headroom and margin apply only when `markets.afrr_capacity.enabled` is true.
+Rebalancing, headroom, margin and the energy offer guard apply only when `markets.afrr_capacity.enabled` is true.
 
 ### Eval results with aFRR
 
@@ -132,10 +133,10 @@ Eval set (83 days, one week per month, Nov 2025 to Oct 2026), defaults with aFRR
 | Strategy | Profit | Share of perfect foresight | Shortfall cost |
 |---|---|---|---|
 | Perfect foresight | €293,950 | 100% | 0% |
-| ml | €156,827 | 53.4% | 1.2% |
-| det | €147,161 | 50.1% | 1.0% |
+| ml | €158,885 | 54.1% | 0.3% |
+| det | €149,674 | 50.9% | 0.3% |
 
-ml earns 6.6% more than det (90% range +€5.3k to +€14.0k over weekly resamples) and is ahead in 10 of 12 weeks. With 0.5 MW of headroom on both sides ml earns €152,754 (1.5%); with none it earns €161,328 but its shortfall cost rises to 2.8% of profit.
+ml earns 6.2% more than det (90% range +€3.4k to +€15.6k over weekly resamples) and is ahead in 10 of 12 weeks. Undelivered energy is 4.7 MWh. Earlier settings on the same eval: no guard and 0.5 MW headroom €156,827 (29.4 MWh, shortfall cost 1.2%); 1 MWh guard and 0.5 MW headroom €156,077 (6.1 MWh, 0.6%); no guard and no headroom €161,328 but shortfall cost 2.8% of profit.
 
 Tested and not adopted: deliberate imbalance positions from a forecast of the system direction (loses money once the energy is bought back, as about 70% of quarters settle at a dual price), and rolling intrinsic trading on the continuous intraday tape after IDA3 (under €1k gain on the quick set with higher shortfall cost).
 

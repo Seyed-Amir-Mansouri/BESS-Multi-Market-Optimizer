@@ -266,3 +266,21 @@ def test_buy_side_headroom_leaves_the_sell_side_free(cfg):
     kept = solve_day(inp, bat, NO_FEES)
     assert np.all(kept.position["ida3"] - kept.r_dn >= -bat.power + 1.0 - 1e-6)
     assert (kept.position["ida3"] + kept.r_up).max() > bat.power - 1.0 + 0.1
+
+
+def test_energy_offer_guard_withholds_activation_near_a_limit(cfg):
+    from bess.market_simulator import settle
+    bat = Battery.from_config(cfg)
+    n = 8
+    idx = pd.date_range("2025-11-20", periods=n, freq="15min", tz="UTC")
+    act = pd.DataFrame({c: 50.0 for c in ["da", "ida1", "ida2", "ida3", "cap_up", "cap_dn", "e_up", "e_dn"]}, index=idx)
+    act["share_up"] = 0.0
+    act["share_dn"] = 1.0
+    z = np.zeros(n)
+    r = np.full(n, 4.0)
+    free, _ = settle(act, {}, z, r, 8.0, bat, NO_FEES, 100.0)
+    kept, soc = settle(act, {}, z, r, 8.0, bat, NO_FEES, 100.0, guard=1.0, guard_lag=2)
+    assert free["shortfall_mwh"] > 1.0
+    assert kept["shortfall_mwh"] < free["shortfall_mwh"]
+    assert kept["afrr_energy"] > free["afrr_energy"]
+    assert soc[3:].max() == pytest.approx(soc[3])
