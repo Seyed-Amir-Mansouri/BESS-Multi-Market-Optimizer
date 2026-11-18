@@ -150,6 +150,20 @@ Where the gap to perfect foresight sits: on the quick set ml makes €100.3k; wi
 - A daily policy learned walk-forward from 693 days of backtests that picks the band price factor (0.8, 1.0, 1.25) and the trust in the IDA forecasts before the LP runs (fitted Q with LightGBM and a recent-winner bandit): eval €155.5k to €156.5k against €156.1k. Choosing the best action each day with hindsight gives only €162.2k, so the gap to perfect foresight is missing price information, not the optimisation.
 - Rebalancing closer than 60 minutes: Spain keeps the 60-minute continuous intraday gate closure until 2029 and the OMIE trades show none later.
 
+ML combined with the optimizer, judged on eval against ml (€158,885, 54.1% of perfect foresight); none is adopted:
+
+| Approach | Eval profit | vs ml | Weeks ahead | Shortfall | Solve per gate |
+|---|---|---|---|---|---|
+| ml (LP on LightGBM forecasts) | €158,885 | | | 4.7 MWh | 0.5 s median |
+| Fault model correcting day-ahead-gate intraday forecasts | €157,928 | -€957 | 3/12 | 4.5 MWh | 0.5 s |
+| Monte Carlo, 5 of 40 scenarios picked by a learned relevance model | €159,896 | +€1,011 (90% -€1.1k to +€3.2k) | 7/12 | 9.7 MWh | 10 s |
+| Two-stage stochastic LP, 10 k-medoids scenarios | €154,185 | -€4,700 | 4/12 | 83.8 MWh | |
+
+- Fault-based learning: a walk-forward LightGBM learns where the intraday forecasts point the wrong way (AUC 0.50 to 0.64) and corrects or withholds those moves before the LP. It helps only at the day-ahead gate on quick (+0.2%) and loses on eval.
+- Spike risk: a classifier of activation share above 40% from what is known at 17:00 D-1 reaches AUC 0.63; keeping rebalancing headroom only in the riskiest 30% of quarter-hours earned less than dropping headroom and raising the energy offer guard to 2 MWh, which became the default.
+- Learned band sizing: a model of the perfect-foresight band from 17:00 D-1 features, blended into or capping the LP band, cuts shortfall by up to 80% but costs 3% to 9% of profit on quick.
+- Monte Carlo with a relevance model: 52,960 bootstrapped scenarios over 662 days labelled by their distance to the realised IDA2 and IDA3 prices; the model ranks them with Spearman 0.69 out of sample. Labelling by the LP plan's realised profit takes about 8 s per scenario and was only used to check the labels. The gain over ml is inside the noise and each gate takes about 20 times longer.
+
 ## Data model
 
 All series share one long-format Parquet schema under `data_store/clean/<dataset>/<YYYY-MM>.parquet`:
