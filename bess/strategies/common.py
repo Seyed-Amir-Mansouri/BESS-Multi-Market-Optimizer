@@ -25,9 +25,9 @@ class Strategy:
         self.time_limit = float(sim["solver_time_limit_s"])
         self.plan_end = None
         self.plan_soc = None
-        self.afrr = bool(cfg["markets"]["afrr_capacity"].get("enabled", True))
+        self.afrr = cfg.on("afrr")
         rb = (sim.get("rebalance") or {}) if self.afrr else {}
-        on = rb.get("enabled") and not self.perfect
+        on = cfg.on("continuous") and not self.perfect
         self.headroom = float(rb.get("headroom_mw", 0.0)) if on else 0.0
         self.headroom_sell = float(rb.get("headroom_sell_mw", 0.0)) if on else 0.0
         self.cycle_reserve = 0.0 if self.perfect else float(sim.get("cycle_reserve_mwh", 0.0))
@@ -51,7 +51,7 @@ class Strategy:
         split = date.fromisoformat(self.cfg["regimes"]["afrr_split"]["date"])
         return DayInput(
             n=len(idx), price={st: v[st] for st in STAGES},
-            open={st: coverage(self.cfg, st, idx) for st in STAGES},
+            open={st: coverage(self.cfg, st, idx) & self.cfg.on(st) for st in STAGES},
             groups=hour_groups(self.cfg, ctx.day, idx),
             cap_up=v["cap_up"], cap_dn=v["cap_dn"], share_up=v["share_up"], share_dn=v["share_dn"],
             e_up=v["e_up"], e_dn=v["e_dn"], soc0=ctx.soc0, fixed=ctx.fixed, band_fixed=ctx.band,
@@ -101,7 +101,7 @@ class Strategy:
         if ctx.gate == "afrr_capacity":
             return band_offers(ctx.gate, ctx.index, np.round(plan.r_up, 3), np.round(plan.r_dn, 3),
                                price=float(self.cfg["markets"]["afrr_capacity"]["price_limits"]["min"]))
-        if ctx.gate not in plan.trade:
+        if ctx.gate not in plan.trade or not self.cfg.on(ctx.gate):
             return pd.DataFrame(columns=COLUMNS)
         cov = coverage(self.cfg, ctx.gate, ctx.index)
         limits = self.cfg["markets"][ctx.gate]["price_limits"]

@@ -284,3 +284,43 @@ def test_energy_offer_guard_withholds_activation_near_a_limit(cfg):
     assert kept["shortfall_mwh"] < free["shortfall_mwh"]
     assert kept["afrr_energy"] > free["afrr_energy"]
     assert soc[3:].max() == pytest.approx(soc[3])
+
+
+def test_deliberate_deviation_is_settled_at_the_imbalance_price(cfg):
+    from bess.market_simulator import settle
+    bat = Battery.from_config(cfg)
+    n = 4
+    idx = pd.date_range("2025-11-20", periods=n, freq="15min", tz="UTC")
+    act = pd.DataFrame({c: 50.0 for c in ["da", "ida1", "ida2", "ida3", "cap_up", "cap_dn", "e_up", "e_dn"]}, index=idx)
+    act["share_up"] = act["share_dn"] = 0.0
+    z = np.zeros(n)
+    dev = np.array([2.0, 0.0, -2.0, 0.0])
+    imb = (np.full(n, 90.0), np.full(n, 30.0))
+    out, soc = settle(act, {}, z, z, 5.0, bat, NO_FEES, 100.0, rebal=z, imbalance=imb, dev=dev)
+    assert out["imbalance"] == pytest.approx((2.0 * 30.0 - 2.0 * 90.0) * 0.25)
+    assert out["imbalance_mwh"] == pytest.approx(1.0)
+    assert soc[2] < 5.0 and soc[3] > soc[2]
+
+
+def test_deviation_keeps_the_charge_needed_for_the_band(cfg):
+    from bess.market_simulator import deviation
+    bat = Battery.from_config(cfg)
+    imb = {"max_mw": 5.0, "reserve_h": 1.0}
+    assert deviation(1.0, 0.0, 0.0, 0.0, 2.0, 0.0, 2.0, bat, imb) == pytest.approx(0.0)
+    assert deviation(1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 8.0, bat, imb) == pytest.approx(5.0)
+    assert deviation(-1.0, 0.0, 0.0, 0.0, 0.0, 3.0, 9.0, bat, imb) == pytest.approx(0.0)
+
+
+def test_rebalance_records_deliberate_deviations(cfg):
+    from bess.market_simulator import rebalance
+    bat = Battery.from_config(cfg)
+    n = 8
+    idx = pd.date_range("2025-11-20", periods=n, freq="15min", tz="UTC")
+    z = np.zeros(n)
+    sign = np.array([1.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0])
+    dev = np.zeros(n)
+    plan = np.full(n + 1, 5.0)
+    rebalance(idx, z, z, z, z, z, 5.0, [(idx[0] - pd.Timedelta(hours=12), plan)], bat, _rebal_cfg(),
+              sign=sign, imb={"max_mw": 2.0, "reserve_h": 1.0}, dev_out=dev)
+    assert dev[0] == pytest.approx(2.0) and dev[4] == pytest.approx(-2.0)
+    assert np.allclose(dev[[1, 2, 3, 5, 6, 7]], 0.0)

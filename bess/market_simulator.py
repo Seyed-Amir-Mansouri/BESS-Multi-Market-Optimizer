@@ -12,6 +12,7 @@ from .bids import clear
 from .config import Config
 from .data.pubtime import market_time
 from .data.store import Store
+from .imbalance import imbalance_sign
 from .optim import STAGES
 from .timeutils import QH, as_date, day_bounds_utc, local_midnight_utc
 
@@ -142,8 +143,12 @@ def activations(act: pd.DataFrame, r_up: np.ndarray, r_dn: np.ndarray) -> tuple[
 
 def rebalance(index: pd.DatetimeIndex, x: np.ndarray, a_up: np.ndarray, a_dn: np.ndarray, r_up: np.ndarray,
               r_dn: np.ndarray, soc0: float, plans: list, bat: Battery, rcfg: dict, dt: float = 0.25,
-              tol: float = 1e-3, budget: float | None = None, guard: float | None = None, guard_lag: int = 2) -> np.ndarray:
-    """Continuous intraday trades that steer the metered charge back toward the latest plan, positive when selling."""
+              tol: float = 1e-3, budget: float | None = None, guard: float | None = None, guard_lag: int = 2,
+              sign: np.ndarray | None = None, imb: dict | None = None, dev_out: np.ndarray | None = None) -> np.ndarray:
+    """Continuous intraday trades that steer the metered charge back toward the latest plan, positive when selling.
+
+    With `sign` the battery also deviates on purpose from its schedule (+1 long, -1 short), written into `dev_out`.
+    """
     n = len(x)
     q = np.zeros(n)
     if not plans:
@@ -173,18 +178,37 @@ def rebalance(index: pd.DatetimeIndex, x: np.ndarray, a_up: np.ndarray, a_dn: np
                     spent = used[k] + ahead[k] + np.maximum(q[k:i], 0).sum() * dt
                     sell_room = min(sell_room, max(budget - spent, 0.0) / dt)
                 q[i] = float(np.clip(want, -buy_room, sell_room))
-        y = x[i] + q[i]
+        d = 0.0
+        if sign is not None and sign[i] != 0:
+            d = deviation(sign[i], x[i] + q[i], a_up[i], a_dn[i], r_up[i], r_dn[i], soc[i], bat, imb, dt)
+            if budget is not None and d > 0:
+                d = min(d, max(budget - used[i] - ahead[i], 0.0) / dt)
+            dev_out[i] = d
+        y = x[i] + q[i] + d
         up, dn = offered(soc, i, bat, guard, guard_lag)
         soc[i + 1], _, dis, _ = _step(soc[i], max(-y, 0) + a_dn[i] * dn, max(y, 0) + a_up[i] * up, bat, dt, tol)
         used[i + 1] = used[i] + dis * dt
     return q
 
 
+def deviation(sign: float, y: float, a_up: float, a_dn: float, r_up: float, r_dn: float, s: float, bat: Battery,
+              imb: dict, dt: float = 0.25) -> float:
+    """Deliberate deviation in MW for one quarter-hour within free power and the charge kept for the band."""
+    mw, res_h = float(imb.get("max_mw", bat.power)), float(imb.get("reserve_h", 1.0))
+    if sign > 0:
+        room = max(bat.power - r_up - a_up - y, 0.0)
+        energy = s - (bat.soc_min + r_up * res_h / bat.eta_d) - a_up * dt / bat.eta_d
+        return min(room, mw, max(energy, 0.0) * bat.eta_d / dt)
+    room = max(bat.power - r_dn - a_dn + y, 0.0)
+    energy = (bat.soc_max - r_dn * res_h * bat.eta_c) - s - a_dn * dt * bat.eta_c
+    return -min(room, mw, max(energy, 0.0) / (bat.eta_c * dt))
+
+
 def settle(act: pd.DataFrame, trades: dict, r_up: np.ndarray, r_dn: np.ndarray, soc0: float, bat: Battery, fees: Fees,
            penalty: float, dt: float = 0.25, tol: float = 1e-3, rebal: np.ndarray | None = None,
            spread: float = 0.0, budget: float | None = None, mic: np.ndarray | None = None,
            slippage: float = 0.0, imbalance: tuple | None = None, guard: float | None = None,
-           guard_lag: int = 2) -> tuple[dict, np.ndarray]:
+           guard_lag: int = 2, dev: np.ndarray | None = None) -> tuple[dict, np.ndarray]:
     """Realised cash flows and state of charge of one day."""
     n = len(act)
     out = {}
@@ -209,6 +233,14 @@ def settle(act: pd.DataFrame, trades: dict, r_up: np.ndarray, r_dn: np.ndarray, 
     revenue += q * qp
     traded += float(np.abs(q).sum() * dt)
     x += q
+    d = np.zeros(n) if dev is None else np.asarray(dev, float)
+    il, ish = (da, da) if imbalance is None else (np.where(np.isnan(imbalance[1]), da, imbalance[1]),
+                                                   np.where(np.isnan(imbalance[0]), da, imbalance[0]))
+    ip = np.where(d > 0, il, ish) * d
+    out["imbalance"] = float(ip.sum() * dt)
+    revenue += ip
+    out["imbalance_mwh"] = float(np.abs(d).sum() * dt)
+    x += d
     cap_up, cap_dn = act["cap_up"].to_numpy(), act["cap_dn"].to_numpy()
     r_up = np.where(np.isnan(cap_up), 0.0, r_up)
     r_dn = np.where(np.isnan(cap_dn), 0.0, r_dn)
@@ -253,7 +285,8 @@ def settle(act: pd.DataFrame, trades: dict, r_up: np.ndarray, r_dn: np.ndarray, 
         pl = np.where(np.isnan(imbalance[1]), da, imbalance[1])
         lost = e_up * np.minimum(short, a_up * dt) - e_dn * np.minimum(long_, a_dn * dt)
         out["penalty"] = -float((short * ps - long_ * pl + lost).sum())
-    out["profit"] = sum(out[k] for k in STAGES + ["rebalance", "afrr_capacity", "afrr_energy", "degradation", "fees", "tax", "penalty"])
+    out["profit"] = sum(out[k] for k in STAGES + ["rebalance", "imbalance", "afrr_capacity", "afrr_energy", "degradation", "fees",
+                                                 "tax", "penalty"])
     out["charge_mwh"] = float(ch.sum() * dt)
     out["discharge_mwh"] = float(dis.sum() * dt)
     out["cycles"] = out["discharge_mwh"] / bat.energy
@@ -274,8 +307,11 @@ class Simulator:
         self.bat, self.fees = Battery.from_config(cfg), Fees.from_config(cfg)
         self.penalty = float(cfg["simulator"]["shortfall_penalty_eur_per_mwh"])
         self.tracking = bool(cfg["simulator"].get("soc_tracking", False))
-        afrr = bool(cfg["markets"]["afrr_capacity"].get("enabled", True))
-        self.rcfg = (cfg["simulator"].get("rebalance") or {}) if afrr else {}
+        afrr = cfg.on("afrr")
+        self.rcfg = cfg["simulator"].get("rebalance") or {}
+        self.imb = cfg["simulator"].get("imbalance") or {}
+        self.sign = imbalance_sign(cfg, Store(cfg.data_dir)) if cfg.on("imbalance") else None
+        self.continuous = cfg.on("continuous") and (afrr or self.sign is not None)
         hard = str(cfg["simulator"].get("cycle_limit", "soft")) == "hard"
         self.budget = self.bat.max_cycles * self.bat.energy if hard else None
         g = (cfg["simulator"].get("energy_offer") or {}) if afrr else {}
@@ -305,8 +341,11 @@ class Simulator:
         r_up = np.where(np.isnan(cap_up), 0.0, r_up)
         r_dn = np.where(np.isnan(cap_dn), 0.0, r_dn)
         a_up, a_dn = activations(act, r_up, r_dn)
-        return rebalance(idx, x, a_up, a_dn, r_up, r_dn, soc0, plans, self.bat, self.rcfg, budget=self.budget,
-                         guard=self.guard, guard_lag=self.guard_lag)
+        sign = None if self.sign is None else self.sign.reindex(idx).fillna(0.0).to_numpy(float)
+        dev = np.zeros(len(idx))
+        q = rebalance(idx, x, a_up, a_dn, r_up, r_dn, soc0, plans, self.bat, self.rcfg, budget=self.budget,
+                      guard=self.guard, guard_lag=self.guard_lag, sign=sign, imb=self.imb, dev_out=dev)
+        return q, dev
 
     def run_day(self, day: date, strategy, soc_plan: float, soc_actual: float):
         idx = self.md.index(day)
@@ -316,9 +355,14 @@ class Simulator:
         prev = np.zeros(n)
         bids = []
         plans = []
-        rebal = bool(self.rcfg.get("enabled")) and not strategy.perfect
+        rebal = self.continuous and not strategy.perfect
         lead = pd.Timedelta(minutes=float(self.rcfg.get("lead_min", 60)))
         for gate in GATES:
+            if not self.cfg.on("afrr" if gate == "afrr_capacity" else gate):
+                if gate in STAGES:
+                    trades[gate] = np.zeros(n)
+                    fixed[gate] = prev.copy()
+                continue
             as_of = market_time(self.cfg, gate, "gate", day)
             own = {}
             ctx_fixed = dict(fixed)
@@ -328,7 +372,7 @@ class Simulator:
                     past = (idx < as_of)
                     own = {c: np.where(past, act[c].to_numpy(float), np.nan) for c in ("share_up", "share_dn")}
                 if rebal and gate == "ida3" and fixed:
-                    q = self._rebalance(idx, act, prev, band, soc_actual, plans) * (idx < as_of + lead)
+                    q = self._rebalance(idx, act, prev, band, soc_actual, plans)[0] * (idx < as_of + lead)
                     last = [st for st in STAGES if st in fixed][-1]
                     ctx_fixed[last] = fixed[last] + q
             else:
@@ -350,12 +394,12 @@ class Simulator:
             fixed[gate] = prev.copy()
         if band is None:
             band = (np.zeros(n), np.zeros(n))
-        q = self._rebalance(idx, act, prev, band, soc_actual, plans) if rebal else None
+        q, dev = self._rebalance(idx, act, prev, band, soc_actual, plans) if rebal else (None, None)
         res, soc = settle(act, trades, band[0], band[1], soc_actual, self.bat, self.fees.on(day), self.penalty,
                           rebal=q, spread=float(self.rcfg.get("spread_eur_per_mwh", 0.0)), budget=self.budget,
                           mic=self.md.mic.loc[idx].to_numpy(float) if self.rcfg.get("price") == "mic" else None,
                           slippage=float(self.rcfg.get("mic_slippage_eur_per_mwh", 0.0)),
-                          imbalance=self._imbalance(idx), guard=self.guard, guard_lag=self.guard_lag)
+                          imbalance=self._imbalance(idx), guard=self.guard, guard_lag=self.guard_lag, dev=dev)
         plan_soc = plans[-1][1] if plans else None
         self.prev = (idx, soc, plan_soc)
         res["day"] = str(day)

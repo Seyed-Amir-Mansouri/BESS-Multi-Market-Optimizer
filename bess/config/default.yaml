@@ -85,6 +85,17 @@ battery:
   max_cycles_per_day: 2.0
   afrr_full_activation_h: 1.0
 
+# Participation
+participation:
+  da: true
+  ida1: true
+  ida2: true
+  ida3: true
+  afrr: false
+  continuous: true
+  imbalance: false
+  note: "false keeps the battery out of a market. afrr covers the band and its energy offers, which REE requires together. continuous is intraday trading after IDA3 to steer the charge back to plan. imbalance is deliberate deviation settled at the imbalance price and needs continuous to restore the charge."
+
 # Markets
 markets:
   da:
@@ -124,7 +135,6 @@ markets:
     results: {day_offset: -1, time: "17:30"}
     coverage: {from: "00:00", to: "24:00"}
     price_limits: {min: 0.0, max: null}
-    enabled: false
     verified:
       gate: docs
       results: docs
@@ -272,7 +282,6 @@ simulator:
   soft_penalty_eur_per_mwh: 10000.0
   soc_tracking: true
   rebalance:
-    enabled: true
     lead_min: 60
     deadband_mwh: 0.5
     hours: 1.0
@@ -286,6 +295,13 @@ simulator:
     guard_mwh: 2.0
     lag_qh: 2
     note: "aFRR energy offers are priced out of merit for a quarter-hour when the charge metered lag_qh quarter-hours earlier is within guard_mwh of the limit; null keeps every offer in merit"
+  imbalance:
+    threshold_eur_per_mwh: 50.0
+    max_mw: 5.0
+    reserve_h: 1.0
+    activation_lag_qh: 1
+    price_lag_qh: 5
+    note: "at the start of each quarter-hour the battery deviates from its schedule when the forecast gain of being long or short over the latest auction price exceeds the threshold; the forecast uses the previous quarter's aFRR activation and imbalance prices from price_lag_qh quarters back"
   end_of_day: target
   end_curve_points: 5
   cycle_limit: hard

@@ -25,10 +25,10 @@ STRATEGIES = {"pf": PerfectForesight, "det": Deterministic, "ml": LightGBM, "sto
 def end_cols(cfg: Config) -> list:
     """Series every simulated day needs given the enabled markets."""
     cols = ["da", "ida2"]
-    if (cfg["markets"].get("afrr_capacity") or {}).get("enabled", True):
+    if cfg.on("afrr"):
         cols.append("cap_dn")
     rb = cfg["simulator"].get("rebalance") or {}
-    if rb.get("enabled") and rb.get("price") == "mic":
+    if cfg.on("continuous") and rb.get("price") == "mic":
         cols.append("mic")
     return cols
 
