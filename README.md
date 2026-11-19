@@ -114,6 +114,40 @@ bess live
 
 The quick set has two one-week windows per season. Its capture rates come within about two points of the full backtest and rank the strategies the same way, so use it to compare ideas and confirm the winner on the full period. Two weeks alone are too noisy to choose between strategies.
 
+### Market participation
+
+Each market has its own switch under `participation` in the config; `false` keeps the battery out of it:
+
+| Switch | Market | Default | Last change in reality | Decided in the model |
+|---|---|---|---|---|
+| `da` | Day-ahead auction (OMIE) | on | 12:00 D-1 | 12:00 D-1 |
+| `ida1` | Intraday auction 1 | on | 15:00 D-1 | 15:00 D-1 |
+| `ida2` | Intraday auction 2 | on | 22:00 D-1 | 22:00 D-1 |
+| `ida3` | Intraday auction 3 (12:00 to 24:00) | on | 10:00 D | 10:00 D |
+| `afrr` | aFRR band and its energy offers (REE) | off | band 17:00 D-1, energy about 25 min before delivery | band 17:00 D-1, energy offer from the charge metered 30 min before |
+| `continuous` | Continuous intraday trades that steer the charge back to plan | on | 60 min before delivery | 60 min before delivery |
+| `imbalance` | Deliberate imbalance settled at the REE imbalance price | off | no gate | start of each quarter-hour |
+
+The switches are linked so that only real combinations are possible: the aFRR band and its energy offers are one switch because REE requires both, and deliberate imbalance only runs with `continuous` on so that the charge can be restored. Perfect foresight never rebalances or trades imbalance.
+
+**Deliberate imbalance** (`simulator.imbalance`): at the start of each quarter-hour the battery discharges extra when a walk-forward model expects being long to beat the latest auction price by more than `threshold_eur_per_mwh`, or charges extra when being short is expected to pay. The model uses the previous quarter's aFRR activation and imbalance prices from about 75 minutes back, and is retrained every month on earlier data only. The deviation is limited to the power left free by the auctions and the band, and keeps one hour of band energy in the battery. Public data has no aFRR or imbalance values finer than 15 minutes, so decisions inside the quarter-hour cannot be tested.
+
+Results on the quick weeks up to 8 August 2026 (the last day with every input complete), ml with aFRR on:
+
+| Signal | Threshold | Profit | Change | Deliberate energy |
+|---|---|---|---|---|
+| none | | €99,303 | | 0 |
+| forecast | 30 €/MWh | €98,563 | -€740 | 25 MWh |
+| forecast | 50 €/MWh | €99,315 | +€12 | 3.5 MWh |
+| forecast | 80 €/MWh | €99,363 | +€60 | 0 |
+| actual direction known | 30 €/MWh | €99,605 | +€302 | 52 MWh |
+| actual direction known | 50 €/MWh | €100,231 | +€928 | 23 MWh |
+| actual direction known | 80 €/MWh | €100,156 | +€853 | 8 MWh |
+
+Even knowing the direction in advance adds under 1%: in about 42% of quarter-hours neither direction beats the auction price, and restoring the charge costs the round-trip losses and wear. The forecast captures none of it, so `imbalance` stays off.
+
+All switches on, eval weeks up to 8 August 2026 (9 weeks): ml €103,483 (52.9% of perfect foresight €195,789), det €96,103, uplift 7.7% (90% range +€2.3k to +€13.1k), ml ahead in 7 of 9 weeks, shortfall cost 0.5%. With `imbalance` off ml earns €103,550.
+
 ### Operation between gates
 
 * **Charge tracking** (`simulator.soc_tracking`): each gate starts from the metered charge at the gate plus the rest of the previous plan.
@@ -124,7 +158,7 @@ The quick set has two one-week windows per season. Its capture rates come within
 * **Energy offer guard** (`simulator.energy_offer`, 2 MWh, 2 quarter-hours): aFRR energy offers are submitted about 25 minutes before delivery. When the charge metered two quarter-hours earlier is within `guard_mwh` of empty, the upward energy offer is priced out of merit for that quarter-hour, and likewise the downward offer near full. The band is still offered and paid; only the activation energy of that quarter-hour is lost. This assumes REE accepts high-priced energy offers for awarded band. `guard_mwh: null` keeps every offer in merit.
 * **aFRR activation** is taken pro rata: the unit's share of its band equals Spain's activated aFRR energy (680/681) over Spain's awarded band (632/633). A unit activated 1.5 times its pro-rata share misses about six times more energy, so check this against the unit's own history.
 
-Rebalancing, headroom, margin and the energy offer guard apply only when `markets.afrr_capacity.enabled` is true.
+Headroom, margin and the energy offer guard apply only when `participation.afrr` is on. Rebalancing prices are assumptions unless `simulator.rebalance.price` is `mic`, which uses the OMIE continuous trades executed 60 to 120 minutes before delivery plus `mic_slippage_eur_per_mwh`.
 
 ### Eval results with aFRR
 
