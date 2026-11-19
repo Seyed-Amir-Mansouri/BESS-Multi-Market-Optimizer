@@ -146,19 +146,19 @@ Results on the quick weeks up to 8 August 2026 (the last day with every input co
 
 Even knowing the direction in advance adds under 1%: in about 42% of quarter-hours neither direction beats the auction price, and restoring the charge costs the round-trip losses and wear. The forecast captures none of it, so `imbalance` stays off.
 
-All switches on, eval weeks up to 8 August 2026 (9 weeks): ml €103,483 (52.9% of perfect foresight €195,789), det €96,103, uplift 7.7% (90% range +€2.3k to +€13.1k), ml ahead in 7 of 9 weeks, shortfall cost 0.5%. With `imbalance` off ml earns €103,550.
+All switches on, eval weeks up to 8 August 2026 (9 weeks), rebalancing at real continuous trade prices: ml €104,327 (53.3% of perfect foresight €195,789), det €96,508, uplift 8.1% (90% range +€2.5k to +€13.8k), ml ahead in 7 of 9 weeks, shortfall cost 0.5%. With `imbalance` off ml earns the same. Priced at the day-ahead price plus or minus €10 instead, ml earns €103,483: the real trades make rebalancing cost €8.8/MWh instead of €12.2/MWh over 255 MWh.
 
 ### Operation between gates
 
 * **Charge tracking** (`simulator.soc_tracking`): each gate starts from the metered charge at the gate plus the rest of the previous plan.
-* **Rebalancing** (`simulator.rebalance`): when activations move the metered charge more than `deadband_mwh` from the latest plan, the battery trades in the continuous intraday market to steer back. Trades are decided `lead_min` before delivery, use only power left free by the market position and the aFRR band, and are priced at the day-ahead price plus or minus `spread_eur_per_mwh`. The spread and lead time are assumptions.
+* **Rebalancing** (`simulator.rebalance`): when activations move the metered charge more than `deadband_mwh` from the latest plan, the battery trades in the continuous intraday market to steer back. Trades are decided `lead_min` before delivery, use only power left free by the market position and the aFRR band, and are priced (`price: mic`, default) at the volume-weighted OMIE continuous trades of the same quarter-hour executed 60 to 120 minutes before delivery, worse by `mic_slippage_eur_per_mwh` (2 €/MWh, an assumption for crossing the bid-ask spread). Where no trade exists, or with `price: spread`, the day-ahead price plus or minus `spread_eur_per_mwh` is used. Real trade prices exist for almost every quarter-hour up to 15 August 2026; before March 2025 the continuous products were hourly.
 * **Headroom** (`simulator.rebalance.headroom_mw`, default 0): buying power the optimizer can keep free next to the down band, so rebalancing can still recharge when the band covers the full power. With the 2 MWh energy offer guard it is not needed. `headroom_sell_mw` (default 0) does the same for selling; shortfalls come from an empty battery, so selling headroom costs profit without lowering them.
 * **Margin** (`simulator.soc_margin_mwh`, 2 MWh): charge kept away from empty and full while aFRR is on.
 * **Shortfall settlement** (`simulator.shortfall_price: imbalance`): energy the battery cannot deliver is bought at the eSIOS short imbalance price (687), energy it cannot absorb is sold at the long imbalance price (686), and undelivered aFRR activation energy is not paid. `fixed` charges the day-ahead price plus `shortfall_penalty_eur_per_mwh` instead.
 * **Energy offer guard** (`simulator.energy_offer`, 2 MWh, 2 quarter-hours): aFRR energy offers are submitted about 25 minutes before delivery. When the charge metered two quarter-hours earlier is within `guard_mwh` of empty, the upward energy offer is priced out of merit for that quarter-hour, and likewise the downward offer near full. The band is still offered and paid; only the activation energy of that quarter-hour is lost. This assumes REE accepts high-priced energy offers for awarded band. `guard_mwh: null` keeps every offer in merit.
 * **aFRR activation** is taken pro rata: the unit's share of its band equals Spain's activated aFRR energy (680/681) over Spain's awarded band (632/633). A unit activated 1.5 times its pro-rata share misses about six times more energy, so check this against the unit's own history.
 
-Headroom, margin and the energy offer guard apply only when `participation.afrr` is on. Rebalancing prices are assumptions unless `simulator.rebalance.price` is `mic`, which uses the OMIE continuous trades executed 60 to 120 minutes before delivery plus `mic_slippage_eur_per_mwh`.
+Headroom, margin and the energy offer guard apply only when `participation.afrr` is on.
 
 ### Eval results with aFRR
 

@@ -286,7 +286,7 @@ simulator:
     deadband_mwh: 0.5
     hours: 1.0
     spread_eur_per_mwh: 10.0
-    price: spread
+    price: mic
     mic_slippage_eur_per_mwh: 2.0
     headroom_mw: 0.0
     headroom_sell_mw: 0.0
