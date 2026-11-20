@@ -38,7 +38,7 @@ def kmedoids(X: np.ndarray, w: np.ndarray, k: int, iters: int = 30, seed: int = 
 class ScenarioGenerator:
     """Point forecasts plus errors of similar past days, reduced to a few weighted scenarios."""
 
-    def __init__(self, errors: ErrorModel, cfg):
+    def __init__(self, errors: ErrorModel, cfg, calibrated: dict | None = None):
         sc = cfg["scenarios"]
         self.errors = errors
         self.samples = int(sc["samples"])
@@ -46,6 +46,7 @@ class ScenarioGenerator:
         self.seed = int(sc["seed"])
         self.bounds = cfg["forecast"].get("bounds") or {}
         self.only = sc.get("targets")
+        self.cal = calibrated or {}
 
     def generate(self, day, point: dict, known: dict, slots: np.ndarray, source: dict) -> tuple[list, np.ndarray]:
         """Scenario dicts and probabilities; one scenario equal to the point forecast when no history exists."""
@@ -60,6 +61,10 @@ class ScenarioGenerator:
         err = {}
         for t in targets:
             g, model = source[t]
+            q = self.quantile_errors(t, g, rows, day) if model else None
+            if q is not None:
+                err[t] = np.where(np.isnan(known[t])[None, :], q[:, slots], 0.0)
+                continue
             e = self.errors.scaled(t, g, rows, day) if model else None
             e = (e if e is not None else self.errors.matrix(t, g, rows, model))[:, slots]
             err[t] = np.where(np.isnan(known[t])[None, :], e, 0.0)
@@ -79,3 +84,13 @@ class ScenarioGenerator:
                 v[t] = np.clip(x, -np.inf if lo is None else lo, np.inf if hi is None else hi)
             out.append(v)
         return out, prob
+
+    def quantile_errors(self, target: str, gate: str, rows: np.ndarray, day) -> np.ndarray | None:
+        """Errors at today's calibrated quantiles, read at the ranks the sampled past days had."""
+        c = self.cal.get((target, gate))
+        i = c.pos.get(str(day)) if c is not None else None
+        if i is None or not c.ready(i):
+            return None
+        past = [c.pos.get(str(d)) for d in self.errors.days[rows]]
+        u = np.array([c.pit[j] if j is not None else np.full(c.pit.shape[1], 0.5) for j in past])
+        return np.nan_to_num(c.errors(np.where(np.isnan(u), 0.5, u), i))

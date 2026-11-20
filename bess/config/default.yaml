@@ -61,6 +61,8 @@ scenarios:
   conditional: false
   min_half_width: 1.0
   z_max: 8.0
+  method: bootstrap
+  method_note: "bootstrap adds whole-day errors of similar past days to the point forecast. quantile keeps the ranks of those days' errors and reads today's calibrated quantiles (forecast.conformal) at those ranks."
 
 hybrid:
   perfect: []
@@ -341,6 +343,19 @@ forecast:
   model_select:
     enabled: false
     window_days: 56
+  conformal:
+    window_days: 56
+    lag_days: 2
+    min_days: 28
+    min_half_width: 1.0
+    hour_blocks: 1
+    adapt_rate: 0.05
+    levels:
+      da: [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99]
+      ida1: [0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95]
+      ida2: [0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95]
+      ida3: [0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95]
+    note: "Quantiles rebuilt from forecast errors scaled by the q10 to q90 width, using the days from window_days to lag_days before delivery. adapt_rate nudges each level every day by how far the last known days missed it. levels sets the quantiles kept for each market."
   lgbm:
     n_estimators: 250
     learning_rate: 0.06
