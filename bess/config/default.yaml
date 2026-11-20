@@ -339,7 +339,7 @@ forecast:
     window_days: 28
     lag_days: 2
   model_select:
-    enabled: true
+    enabled: false
     window_days: 56
   lgbm:
     n_estimators: 250
