@@ -61,7 +61,7 @@ scenarios:
   conditional: false
   min_half_width: 1.0
   z_max: 8.0
-  method: bootstrap
+  method: quantile
   method_note: "bootstrap adds whole-day errors of similar past days to the point forecast. quantile keeps the ranks of those days' errors and reads today's calibrated quantiles (forecast.conformal) at those ranks."
 
 hybrid:
