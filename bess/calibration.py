@@ -57,11 +57,13 @@ def calibrate(cfg, pred: pd.DataFrame, quant: pd.DataFrame) -> dict:
     window, lag = int(c.get("window_days", 56)), int(c.get("lag_days", 2))
     min_days, floor = int(c.get("min_days", 28)), float(c.get("min_half_width", 1.0))
     blocks, gamma = int(c.get("hour_blocks", 1)), float(c.get("adapt_rate", 0.0))
+    native = bool(c.get("native", False))
     block = (np.arange(NS) // (NS // blocks)).clip(max=blocks - 1)
     if pred.empty or quant.empty:
         return {}
     keys = ["target", "gate", "day", "slot"]
-    q = quant[keys + ["q10", "q90"]].merge(pred[keys + ["pred", "actual"]], on=keys).dropna(subset=["pred", "q10", "q90"])
+    cols = [c for c in quant.columns if c.startswith("q") and c[1:].isdigit()]
+    q = quant[keys + cols].merge(pred[keys + ["pred", "actual"]], on=keys).dropna(subset=["pred", "q10", "q90"])
     out = {}
     for (t, g), grp in q.groupby(["target", "gate"]):
         days = sorted(grp["day"].astype(str).unique())
@@ -71,6 +73,12 @@ def calibrate(cfg, pred: pd.DataFrame, quant: pd.DataFrame) -> dict:
         S = np.maximum((_matrix(grp, "q90", pos) - _matrix(grp, "q10", pos)) / 2.0, floor)
         Z = (A - P) / S
         lv = levels(cfg, t)
+        off = np.zeros((len(days), NS, len(lv)))
+        if native:
+            for j, l in enumerate(lv):
+                name = f"q{round(l * 100)}"
+                if name in grp.columns and grp[name].notna().any():
+                    off[..., j] = np.nan_to_num((_matrix(grp, name, pos) - P) / S)
         dd = np.array([date.fromisoformat(d) for d in days])
         zq = np.full((len(days), NS, len(lv)), np.nan)
         pit = np.full((len(days), NS), np.nan)
@@ -92,7 +100,13 @@ def calibrate(cfg, pred: pd.DataFrame, quant: pd.DataFrame) -> dict:
                 z = np.sort(z[np.isfinite(z)])
                 if len(z) < 10:
                     continue
-                zq[i, cols] = np.quantile(z, np.clip(np.sort(tau[b]), 0.0005, 0.9995))
+                tb = np.clip(tau[b] if native else np.sort(tau[b]), 0.0005, 0.9995)
+                if native:
+                    zw = Z[sel][:, cols][..., None] - off[sel][:, cols]
+                    zl = np.array([np.nanquantile(zw[..., j], tb[j]) for j in range(len(lv))])
+                    zq[i, cols] = np.sort(off[i, cols] + zl, axis=-1)
+                else:
+                    zq[i, cols] = np.quantile(z, tb)
                 zi = Z[i, cols]
                 ok = np.isfinite(zi)
                 r = np.full(zi.shape, np.nan)

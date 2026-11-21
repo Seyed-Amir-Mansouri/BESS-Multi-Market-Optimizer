@@ -345,7 +345,7 @@ forecast:
     window_days: 56
   conformal:
     window_days: 56
-    lag_days: 2
+    lag_days: 1
     min_days: 28
     min_half_width: 1.0
     hour_blocks: 1

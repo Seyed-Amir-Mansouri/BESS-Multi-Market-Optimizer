@@ -38,7 +38,8 @@ def test_calibrated_quantiles_hit_their_levels(cfg):
 def test_calibration_uses_only_days_published_before(cfg):
     pred, quant = _frames(days=120)
     a = calibrate(cfg, pred, quant)[("da", "da")]
-    late = pred["day"] >= "2025-04-15"
+    lag = int(cfg["forecast"]["conformal"]["lag_days"])
+    late = pred["day"] > str(date(2025, 4, 16) - timedelta(days=lag))
     pred.loc[late, "actual"] += 1000.0
     b = calibrate(cfg, pred, quant)[("da", "da")]
     i = a.pos["2025-04-16"]
