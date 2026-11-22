@@ -36,6 +36,13 @@ class Strategy:
         self.soc_margin = None if m is None else np.resize(np.asarray(m, float), 24)
         self.interim_cost = float(sim.get("interim_cycle_cost_eur_per_mwh", 0.0))
         self.interim_exclusive = bool(sim.get("interim_exclusive", False))
+        self.skip_unheld = bool(cfg["backtest"].get("skip_unpublished_auctions", True))
+
+    def held(self, st: str, idx) -> bool:
+        """Whether the auction of this stage has a published result for the day."""
+        if not self.skip_unheld or st not in self.md.values.columns:
+            return True
+        return bool(self.md.values.loc[idx, st].notna().any())
 
     def decide(self, ctx: Context) -> pd.DataFrame:
         raise NotImplementedError
@@ -51,7 +58,7 @@ class Strategy:
         split = date.fromisoformat(self.cfg["regimes"]["afrr_split"]["date"])
         return DayInput(
             n=len(idx), price={st: v[st] for st in STAGES},
-            open={st: coverage(self.cfg, st, idx) & self.cfg.on(st) for st in STAGES},
+            open={st: coverage(self.cfg, st, idx) & self.cfg.on(st) & self.held(st, idx) for st in STAGES},
             groups=hour_groups(self.cfg, ctx.day, idx),
             cap_up=v["cap_up"], cap_dn=v["cap_dn"], share_up=v["share_up"], share_dn=v["share_dn"],
             e_up=v["e_up"], e_dn=v["e_dn"], soc0=ctx.soc0, fixed=ctx.fixed, band_fixed=ctx.band,

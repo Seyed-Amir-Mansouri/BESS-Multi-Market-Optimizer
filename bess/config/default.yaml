@@ -22,6 +22,8 @@ data:
 
 backtest:
   start: "2024-06-14"
+  skip_unpublished_auctions: true
+  skip_note: "An auction with no published result for the day is treated as not held by every strategy, as perfect foresight already does. Spain has no IDA1 result on about 7% of days in OMIE, ESIOS and ENTSO-E."
   exclude:
     - {from: "2025-04-28", to: "2025-05-04", note: "Iberian blackout week"}
   sets:
