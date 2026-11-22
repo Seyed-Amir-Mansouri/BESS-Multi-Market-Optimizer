@@ -55,7 +55,7 @@ scenarios:
   season_days: 45
   recency_days: 180
   samples: 1000
-  count: 10
+  count: 30
   seed: 0
   targets: [da, ida1, ida2, ida3]
   conditional: false
