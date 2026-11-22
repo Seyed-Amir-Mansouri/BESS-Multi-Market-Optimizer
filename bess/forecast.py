@@ -64,9 +64,35 @@ def predictions_path(cfg):
     return p / str(cfg["forecast"].get("predictions") or "predictions.parquet")
 
 
-def load_predictions(cfg) -> pd.DataFrame:
+def load_predictions(cfg, bias: bool = False) -> pd.DataFrame:
     p = predictions_path(cfg)
-    return pd.read_parquet(p) if p.exists() else pd.DataFrame()
+    out = pd.read_parquet(p) if p.exists() else pd.DataFrame()
+    return bias_corrected(cfg, out) if bias else out
+
+
+def bias_corrected(cfg, pred: pd.DataFrame) -> pd.DataFrame:
+    """Price forecasts at the chosen gates shifted by a share of the mean same-slot error of recent known days."""
+    bc = cfg["forecast"].get("bias_correction") or {}
+    if pred.empty or not bc.get("enabled", False):
+        return pred
+    window, lag, share = int(bc.get("window_days", 14)), int(bc.get("lag_days", 1)), float(bc.get("share", 0.5))
+    m = pred["target"].isin(bc.get("targets") or []) & pred["gate"].isin(bc.get("gates") or [])
+    q = pred[m & pred["pred"].notna()]
+    parts = []
+    for (t, g), x in q.groupby(["target", "gate"]):
+        e = (x["actual"] - x["pred"]).groupby([x["day"].astype(str), x["slot"]]).mean().unstack()
+        e.index = pd.to_datetime(e.index)
+        e = e.reindex(pd.date_range(e.index.min(), e.index.max()))
+        b = e.shift(lag).rolling(window, min_periods=max(3, window // 2)).mean() * share
+        b.index = b.index.strftime("%Y-%m-%d")
+        k = b.stack().rename("bias").reset_index()
+        k.columns = ["day", "slot", "bias"]
+        parts.append(k.assign(target=t, gate=g))
+    if not parts:
+        return pred
+    out = pred.assign(day=pred["day"].astype(str)).merge(pd.concat(parts), on=["target", "gate", "day", "slot"], how="left")
+    out["pred"] = out["pred"] + out["bias"].fillna(0.0)
+    return out.drop(columns="bias")
 
 
 def quantiles_path(cfg):

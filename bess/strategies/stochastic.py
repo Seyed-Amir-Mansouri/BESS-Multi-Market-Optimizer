@@ -18,7 +18,7 @@ class Stochastic(LightGBM):
 
     def __init__(self, md, cfg):
         super().__init__(md, cfg)
-        pred = load_predictions(cfg)
+        pred = load_predictions(cfg, bias=True)
         quant = load_quantiles(cfg) if cfg["scenarios"].get("conditional") or cfg["scenarios"].get("method") == "quantile" else None
         cal = calibrate(cfg, pred, quant) if cfg["scenarios"].get("method") == "quantile" else None
         self.gen = ScenarioGenerator(ErrorModel(pred, cfg, quant if cfg["scenarios"].get("conditional") else None), cfg, cal)

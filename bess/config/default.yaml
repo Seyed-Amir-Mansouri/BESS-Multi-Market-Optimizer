@@ -424,4 +424,12 @@ forecast:
     load_err: [load_act, load_fc]
   nowcast_slots: 12
   da_surprise: true
+  bias_correction:
+    enabled: true
+    window_days: 14
+    lag_days: 1
+    share: 0.5
+    targets: [da, ida1, ida2, ida3]
+    gates: [da, ida1]
+    note: "Each price forecast made at the DA and IDA1 gates is shifted by half the mean error of the same quarter-hour over the 14 known days before. It removes the level drift the models lag behind, as in summer 2026."
   ida_fallback: latest

@@ -64,7 +64,7 @@ class LightGBM(Deterministic):
 
     def __init__(self, md, cfg):
         super().__init__(md, cfg)
-        p = load_predictions(cfg)
+        p = load_predictions(cfg, bias=True)
         self.pred = {k: g.set_index(["day", "slot"])["pred"] for k, g in p.groupby(["target", "gate"])} if not p.empty else {}
         sm = cfg["forecast"].get("spread_margin") or {}
         self.scale = float(sm.get("scale", 0.0))
