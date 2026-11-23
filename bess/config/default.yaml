@@ -108,6 +108,7 @@ markets:
     results: {day_offset: -1, time: "13:30"}
     coverage: {from: "00:00", to: "24:00"}
     price_limits: {min: -500.0, max: 4000.0}
+    max_steps: 25
     verified:
       gate: docs
       results: no
@@ -118,6 +119,7 @@ markets:
     results: {day_offset: -1, time: "15:45"}
     coverage: {from: "00:00", to: "24:00"}
     price_limits: {min: -9999.0, max: 9999.0}
+    max_steps: 10
     verified: {gate: docs, results: no, coverage: docs, price_limits: docs}
   ida2:
     label: "IDA2 (OMIE / SIDC)"
@@ -125,6 +127,7 @@ markets:
     results: {day_offset: -1, time: "22:45"}
     coverage: {from: "00:00", to: "24:00"}
     price_limits: {min: -9999.0, max: 9999.0}
+    max_steps: 10
     verified: {gate: docs, results: no, coverage: docs, price_limits: docs}
   ida3:
     label: "IDA3 (OMIE / SIDC)"
@@ -132,6 +135,7 @@ markets:
     results: {day_offset: 0, time: "10:45"}
     coverage: {from: "12:00", to: "24:00"}
     price_limits: {min: -9999.0, max: 9999.0}
+    max_steps: 10
     verified: {gate: docs, results: no, coverage: docs, price_limits: docs}
   afrr_capacity:
     label: "aFRR capacity (REE band market)"

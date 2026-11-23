@@ -113,5 +113,6 @@ class Strategy:
         cov = coverage(self.cfg, ctx.gate, ctx.index)
         limits = self.cfg["markets"][ctx.gate]["price_limits"]
         if plan.scen_trade is not None:
-            return curve(ctx.gate, ctx.index, plan.scen_price, np.round(plan.scen_trade, 3) * cov, limits)
+            return curve(ctx.gate, ctx.index, plan.scen_price, np.round(plan.scen_trade, 3) * cov, limits,
+                         max_steps=self.cfg["markets"][ctx.gate].get("max_steps"))
         return price_taking(ctx.gate, ctx.index, np.round(plan.trade[ctx.gate], 3) * cov, limits)
