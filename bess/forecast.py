@@ -173,7 +173,7 @@ def walk_forward(cfg, store, start=None, end=None, targets=None, log=None, save=
             base = base_tr = None
             if target in PRICES[1:] and gate != "da":
                 base = base_tr = full["da_d0"].to_numpy()
-            elif gap and target in PRICES[1:]:
+            elif gap and not quantiles and target in PRICES[1:]:
                 base, base_tr = da_pred, panel.val["da"].ravel()
             yt = y - base_tr if base_tr is not None else y
             lo, hi = (fc.get("bounds") or {}).get(target, [None, None])
