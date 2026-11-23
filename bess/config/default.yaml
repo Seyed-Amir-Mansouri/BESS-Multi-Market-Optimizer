@@ -75,7 +75,7 @@ hybrid:
 
 stochastic:
   band: deterministic
-  nonanticipative: false
+  nonanticipative: true
   deliverable: false
   gates: null
 
