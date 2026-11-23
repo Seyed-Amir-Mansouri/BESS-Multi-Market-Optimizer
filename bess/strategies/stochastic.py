@@ -34,7 +34,7 @@ class Stochastic(LightGBM):
     def scenarios(self, ctx: Context, v: dict) -> tuple[list, np.ndarray]:
         slots = self.md.slot.loc[ctx.index].to_numpy()
         kn = {t: known(self.md, t, ctx.day, ctx.as_of) for t in self.source}
-        return self.gen.generate(ctx.day, v, kn, slots, self.source)
+        return self.gen.generate(ctx.day, v, kn, slots, self.source, ctx.gate)
 
     def decide(self, ctx: Context):
         if self.gates and ctx.gate not in self.gates:

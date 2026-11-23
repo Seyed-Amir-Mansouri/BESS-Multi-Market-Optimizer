@@ -58,6 +58,8 @@ scenarios:
   recency_days: 180
   samples: 1000
   count: 30
+  count_by_gate: {da: 25, ida1: 10, ida2: 10, ida3: 10}
+  count_note: "Scenarios per gate; each gate's bid curve has at most one step per scenario, so the counts match the step limits of the markets (markets.*.max_steps)."
   seed: 0
   targets: [da, ida1, ida2, ida3]
   conditional: false
