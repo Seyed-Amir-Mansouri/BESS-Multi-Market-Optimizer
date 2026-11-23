@@ -94,6 +94,7 @@ class DayInput:
     end_price: float | None = None
     end_curve: tuple | None = None
     headroom: float = 0.0
+    headroom_sell: float = 0.0
     cycle_reserve: float = 0.0
     cycle_activation: float = 1.0
     soc_margin: np.ndarray | None = None
@@ -241,7 +242,7 @@ def _scenario(lp: LP, inp: DayInput, bat: Battery, fees: Fees, w: float, r_up, r
         if band:
             hu = lp.var(n, 0.0, np.inf, cost=w * soft_penalty)
             hd = lp.var(n, 0.0, np.inf, cost=w * soft_penalty)
-            lp.con([(1.0, x), (1.0, r_up), (-1.0, hu)], -np.inf, P - inp.headroom)
+            lp.con([(1.0, x), (1.0, r_up), (-1.0, hu)], -np.inf, P - inp.headroom_sell)
             lp.con([(1.0, x), (-1.0, r_dn), (1.0, hd)], -P + inp.headroom, np.inf)
         if inp.end_curve is not None:
             xs, vs = (np.asarray(a, float) for a in inp.end_curve)

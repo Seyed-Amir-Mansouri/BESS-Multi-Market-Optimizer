@@ -174,6 +174,7 @@ def test_headroom_keeps_power_free_next_to_the_band(cfg):
     inp = _input(n, np.full(n, 50.0), cap=80.0)
     free = solve_day(inp, bat, NO_FEES)
     inp.headroom = 1.0
+    inp.headroom_sell = 1.0
     kept = solve_day(inp, bat, NO_FEES)
     assert free.r_up.max() > bat.power - 1.0 + 0.1
     assert np.all(kept.position["ida3"] + kept.r_up <= bat.power - 1.0 + 1e-6)
@@ -238,3 +239,88 @@ def test_planned_charge_keeps_the_margin_from_both_limits(cfg):
     kept = solve_day(inp, bat, NO_FEES)
     assert free.soc.min() < 0.5 and free.soc.max() > 9.5
     assert kept.soc[1:].min() >= 1.5 - 1e-6 and kept.soc.max() <= 8.5 + 1e-6
+
+
+def test_settle_charges_shortfall_at_the_imbalance_price(cfg):
+    from bess.market_simulator import settle
+    bat = Battery.from_config(cfg)
+    n = 8
+    idx = pd.date_range("2025-11-20", periods=n, freq="15min", tz="UTC")
+    act = pd.DataFrame({c: 50.0 for c in ["da", "ida1", "ida2", "ida3", "cap_up", "cap_dn", "e_up", "e_dn"]}, index=idx)
+    act["share_up"] = 0.0
+    act["share_dn"] = 0.0
+    z = np.zeros(n)
+    short = np.full(n, 200.0)
+    long_ = np.full(n, 20.0)
+    sell, _ = settle(act, {"da": np.full(n, 4.0)}, z, z, 1.0, bat, NO_FEES, 100.0, imbalance=(short, long_))
+    assert sell["penalty"] == pytest.approx(-sell["shortfall_mwh"] * 200.0)
+    buy, _ = settle(act, {"da": np.full(n, -4.0)}, z, z, 9.0, bat, NO_FEES, 100.0, imbalance=(short, long_))
+    assert buy["penalty"] == pytest.approx(buy["shortfall_mwh"] * 20.0)
+
+
+def test_buy_side_headroom_leaves_the_sell_side_free(cfg):
+    bat = Battery.from_config(cfg)
+    n = 8
+    inp = _input(n, np.full(n, 50.0), cap=80.0)
+    inp.headroom = 1.0
+    kept = solve_day(inp, bat, NO_FEES)
+    assert np.all(kept.position["ida3"] - kept.r_dn >= -bat.power + 1.0 - 1e-6)
+    assert (kept.position["ida3"] + kept.r_up).max() > bat.power - 1.0 + 0.1
+
+
+def test_energy_offer_guard_withholds_activation_near_a_limit(cfg):
+    from bess.market_simulator import settle
+    bat = Battery.from_config(cfg)
+    n = 8
+    idx = pd.date_range("2025-11-20", periods=n, freq="15min", tz="UTC")
+    act = pd.DataFrame({c: 50.0 for c in ["da", "ida1", "ida2", "ida3", "cap_up", "cap_dn", "e_up", "e_dn"]}, index=idx)
+    act["share_up"] = 0.0
+    act["share_dn"] = 1.0
+    z = np.zeros(n)
+    r = np.full(n, 4.0)
+    free, _ = settle(act, {}, z, r, 8.0, bat, NO_FEES, 100.0)
+    kept, soc = settle(act, {}, z, r, 8.0, bat, NO_FEES, 100.0, guard=1.0, guard_lag=2)
+    assert free["shortfall_mwh"] > 1.0
+    assert kept["shortfall_mwh"] < free["shortfall_mwh"]
+    assert kept["afrr_energy"] > free["afrr_energy"]
+    assert soc[3:].max() == pytest.approx(soc[3])
+
+
+def test_deliberate_deviation_is_settled_at_the_imbalance_price(cfg):
+    from bess.market_simulator import settle
+    bat = Battery.from_config(cfg)
+    n = 4
+    idx = pd.date_range("2025-11-20", periods=n, freq="15min", tz="UTC")
+    act = pd.DataFrame({c: 50.0 for c in ["da", "ida1", "ida2", "ida3", "cap_up", "cap_dn", "e_up", "e_dn"]}, index=idx)
+    act["share_up"] = act["share_dn"] = 0.0
+    z = np.zeros(n)
+    dev = np.array([2.0, 0.0, -2.0, 0.0])
+    imb = (np.full(n, 90.0), np.full(n, 30.0))
+    out, soc = settle(act, {}, z, z, 5.0, bat, NO_FEES, 100.0, rebal=z, imbalance=imb, dev=dev)
+    assert out["imbalance"] == pytest.approx((2.0 * 30.0 - 2.0 * 90.0) * 0.25)
+    assert out["imbalance_mwh"] == pytest.approx(1.0)
+    assert soc[2] < 5.0 and soc[3] > soc[2]
+
+
+def test_deviation_keeps_the_charge_needed_for_the_band(cfg):
+    from bess.market_simulator import deviation
+    bat = Battery.from_config(cfg)
+    imb = {"max_mw": 5.0, "reserve_h": 1.0}
+    assert deviation(1.0, 0.0, 0.0, 0.0, 2.0, 0.0, 2.0, bat, imb) == pytest.approx(0.0)
+    assert deviation(1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 8.0, bat, imb) == pytest.approx(5.0)
+    assert deviation(-1.0, 0.0, 0.0, 0.0, 0.0, 3.0, 9.0, bat, imb) == pytest.approx(0.0)
+
+
+def test_rebalance_records_deliberate_deviations(cfg):
+    from bess.market_simulator import rebalance
+    bat = Battery.from_config(cfg)
+    n = 8
+    idx = pd.date_range("2025-11-20", periods=n, freq="15min", tz="UTC")
+    z = np.zeros(n)
+    sign = np.array([1.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0])
+    dev = np.zeros(n)
+    plan = np.full(n + 1, 5.0)
+    rebalance(idx, z, z, z, z, z, 5.0, [(idx[0] - pd.Timedelta(hours=12), plan)], bat, _rebal_cfg(),
+              sign=sign, imb={"max_mw": 2.0, "reserve_h": 1.0}, dev_out=dev)
+    assert dev[0] == pytest.approx(2.0) and dev[4] == pytest.approx(-2.0)
+    assert np.allclose(dev[[1, 2, 3, 5, 6, 7]], 0.0)

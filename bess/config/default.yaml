@@ -22,6 +22,8 @@ data:
 
 backtest:
   start: "2024-06-14"
+  skip_unpublished_auctions: true
+  skip_note: "An auction with no published result for the day is treated as not held by every strategy, as perfect foresight already does. Spain has no IDA1 result on about 7% of days in OMIE, ESIOS and ENTSO-E."
   exclude:
     - {from: "2025-04-28", to: "2025-05-04", note: "Iberian blackout week"}
   sets:
@@ -55,12 +57,14 @@ scenarios:
   season_days: 45
   recency_days: 180
   samples: 1000
-  count: 10
+  count: 30
   seed: 0
   targets: [da, ida1, ida2, ida3]
   conditional: false
   min_half_width: 1.0
   z_max: 8.0
+  method: quantile
+  method_note: "bootstrap adds whole-day errors of similar past days to the point forecast. quantile keeps the ranks of those days' errors and reads today's calibrated quantiles (forecast.conformal) at those ranks."
 
 hybrid:
   perfect: []
@@ -85,6 +89,17 @@ battery:
   max_cycles_per_day: 2.0
   afrr_full_activation_h: 1.0
 
+# Participation
+participation:
+  da: true
+  ida1: true
+  ida2: true
+  ida3: true
+  afrr: false
+  continuous: true
+  imbalance: false
+  note: "false keeps the battery out of a market. afrr covers the band and its energy offers, which REE requires together. continuous is intraday trading after IDA3 to steer the charge back to plan. imbalance is deliberate deviation settled at the imbalance price and needs continuous to restore the charge."
+
 # Markets
 markets:
   da:
@@ -93,6 +108,7 @@ markets:
     results: {day_offset: -1, time: "13:30"}
     coverage: {from: "00:00", to: "24:00"}
     price_limits: {min: -500.0, max: 4000.0}
+    max_steps: 25
     verified:
       gate: docs
       results: no
@@ -103,6 +119,7 @@ markets:
     results: {day_offset: -1, time: "15:45"}
     coverage: {from: "00:00", to: "24:00"}
     price_limits: {min: -9999.0, max: 9999.0}
+    max_steps: 10
     verified: {gate: docs, results: no, coverage: docs, price_limits: docs}
   ida2:
     label: "IDA2 (OMIE / SIDC)"
@@ -110,6 +127,7 @@ markets:
     results: {day_offset: -1, time: "22:45"}
     coverage: {from: "00:00", to: "24:00"}
     price_limits: {min: -9999.0, max: 9999.0}
+    max_steps: 10
     verified: {gate: docs, results: no, coverage: docs, price_limits: docs}
   ida3:
     label: "IDA3 (OMIE / SIDC)"
@@ -117,6 +135,7 @@ markets:
     results: {day_offset: 0, time: "10:45"}
     coverage: {from: "12:00", to: "24:00"}
     price_limits: {min: -9999.0, max: 9999.0}
+    max_steps: 10
     verified: {gate: docs, results: no, coverage: docs, price_limits: docs}
   afrr_capacity:
     label: "aFRR capacity (REE band market)"
@@ -124,7 +143,6 @@ markets:
     results: {day_offset: -1, time: "17:30"}
     coverage: {from: "00:00", to: "24:00"}
     price_limits: {min: 0.0, max: null}
-    enabled: false
     verified:
       gate: docs
       results: docs
@@ -194,6 +212,8 @@ esios:
     afrr_energy_price_down: {id: 683, unit: "EUR/MWh", expect: ["secundaria", "bajar"],                 pub_rule: {type: after_delivery, minutes: 60, assumed: true}}
     afrr_energy_up_mwh:   {id: 680, unit: "MWh", expect: ["energia activada", "secundaria", "subir"],   pub_rule: {type: after_delivery, minutes: 60, assumed: true}}
     afrr_energy_down_mwh: {id: 681, unit: "MWh", expect: ["energia activada", "secundaria", "bajar"],   pub_rule: {type: after_delivery, minutes: 60, assumed: true}}
+    imbalance_price_long:  {id: 686, unit: "EUR/MWh", expect: ["desvios", "subir"],                   pub_rule: {type: after_delivery, minutes: 60, assumed: true}}
+    imbalance_price_short: {id: 687, unit: "EUR/MWh", expect: ["desvios", "bajar"],                   pub_rule: {type: after_delivery, minutes: 60, assumed: true}}
     demand_forecast:     {id: 460,  unit: "MW", expect: ["demanda"],   pub_rule: {type: day_offset, day_offset: -1, time: "11:00", assumed: true}}
     wind_forecast:       {id: 541,  unit: "MW", expect: ["eolica"],    pub_rule: {type: day_offset, day_offset: -1, time: "11:00", assumed: true}}
     solar_pv_forecast:   {id: 542,  unit: "MW", expect: ["solar"],     pub_rule: {type: day_offset, day_offset: -1, time: "11:00", assumed: true}}
@@ -262,20 +282,34 @@ simulator:
     e_dn: afrr_energy_price_down
     act_up: afrr_energy_up_mwh
     act_dn: afrr_energy_down_mwh
+    imb_short: imbalance_price_short
+    imb_long: imbalance_price_long
   activation_days: 7
   shortfall_penalty_eur_per_mwh: 100.0
+  shortfall_price: imbalance
   soft_penalty_eur_per_mwh: 10000.0
   soc_tracking: true
   rebalance:
-    enabled: true
     lead_min: 60
     deadband_mwh: 0.5
     hours: 1.0
     spread_eur_per_mwh: 10.0
-    price: spread
+    price: mic
     mic_slippage_eur_per_mwh: 2.0
     headroom_mw: 0.0
+    headroom_sell_mw: 0.0
     note: "continuous intraday at the OMIE trade price 60 to 120 min before delivery plus slippage, else day-ahead plus or minus spread; slippage and spread are assumptions"
+  energy_offer:
+    guard_mwh: 2.0
+    lag_qh: 2
+    note: "aFRR energy offers are priced out of merit for a quarter-hour when the charge metered lag_qh quarter-hours earlier is within guard_mwh of the limit; null keeps every offer in merit"
+  imbalance:
+    threshold_eur_per_mwh: 50.0
+    max_mw: 5.0
+    reserve_h: 1.0
+    activation_lag_qh: 1
+    price_lag_qh: 5
+    note: "at the start of each quarter-hour the battery deviates from its schedule when the forecast gain of being long or short over the latest auction price exceeds the threshold; the forecast uses the previous quarter's aFRR activation and imbalance prices from price_lag_qh quarters back"
   end_of_day: target
   end_curve_points: 5
   cycle_limit: hard
@@ -313,8 +347,21 @@ forecast:
     window_days: 28
     lag_days: 2
   model_select:
-    enabled: true
+    enabled: false
     window_days: 56
+  conformal:
+    window_days: 56
+    lag_days: 1
+    min_days: 28
+    min_half_width: 1.0
+    hour_blocks: 1
+    adapt_rate: 0.05
+    levels:
+      da: [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99]
+      ida1: [0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95]
+      ida2: [0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95]
+      ida3: [0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95]
+    note: "Quantiles rebuilt from forecast errors scaled by the q10 to q90 width, using the days from window_days to lag_days before delivery. adapt_rate nudges each level every day by how far the last known days missed it. levels sets the quantiles kept for each market."
   lgbm:
     n_estimators: 250
     learning_rate: 0.06
@@ -381,4 +428,14 @@ forecast:
     load_err: [load_act, load_fc]
   nowcast_slots: 12
   da_surprise: true
+  ida_gap_at_da: true
+  ida_gap_note: "At the DA gate the IDA prices are forecast as the DA forecast plus a model of the IDA minus DA gap, trained on the gap to the actual DA price. It cuts the gap error by 13 to 31 percent."
+  bias_correction:
+    enabled: true
+    window_days: 14
+    lag_days: 1
+    share: 0.5
+    targets: [da, ida1, ida2, ida3]
+    gates: [da, ida1]
+    note: "Each price forecast made at the DA and IDA1 gates is shifted by half the mean error of the same quarter-hour over the 14 known days before. It removes the level drift the models lag behind, as in summer 2026."
   ida_fallback: latest

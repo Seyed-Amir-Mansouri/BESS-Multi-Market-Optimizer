@@ -10,7 +10,8 @@ class PerfectForesight(Strategy):
     perfect = True
 
     def decide(self, ctx: Context):
-        if ctx.gate == "da":
+        if getattr(self, "plan_day", None) != ctx.day:
+            self.plan_day = ctx.day
             act = self.md.day(ctx.day)
             v = {c: act[c].to_numpy(dtype=float) for c in act.columns}
             self.plan = self.solve(ctx, v)

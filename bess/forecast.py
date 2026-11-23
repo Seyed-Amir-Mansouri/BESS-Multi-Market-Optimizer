@@ -64,9 +64,35 @@ def predictions_path(cfg):
     return p / str(cfg["forecast"].get("predictions") or "predictions.parquet")
 
 
-def load_predictions(cfg) -> pd.DataFrame:
+def load_predictions(cfg, bias: bool = False) -> pd.DataFrame:
     p = predictions_path(cfg)
-    return pd.read_parquet(p) if p.exists() else pd.DataFrame()
+    out = pd.read_parquet(p) if p.exists() else pd.DataFrame()
+    return bias_corrected(cfg, out) if bias else out
+
+
+def bias_corrected(cfg, pred: pd.DataFrame) -> pd.DataFrame:
+    """Price forecasts at the chosen gates shifted by a share of the mean same-slot error of recent known days."""
+    bc = cfg["forecast"].get("bias_correction") or {}
+    if pred.empty or not bc.get("enabled", False):
+        return pred
+    window, lag, share = int(bc.get("window_days", 14)), int(bc.get("lag_days", 1)), float(bc.get("share", 0.5))
+    m = pred["target"].isin(bc.get("targets") or []) & pred["gate"].isin(bc.get("gates") or [])
+    q = pred[m & pred["pred"].notna()]
+    parts = []
+    for (t, g), x in q.groupby(["target", "gate"]):
+        e = (x["actual"] - x["pred"]).groupby([x["day"].astype(str), x["slot"]]).mean().unstack()
+        e.index = pd.to_datetime(e.index)
+        e = e.reindex(pd.date_range(e.index.min(), e.index.max()))
+        b = e.shift(lag).rolling(window, min_periods=max(3, window // 2)).mean() * share
+        b.index = b.index.strftime("%Y-%m-%d")
+        k = b.stack().rename("bias").reset_index()
+        k.columns = ["day", "slot", "bias"]
+        parts.append(k.assign(target=t, gate=g))
+    if not parts:
+        return pred
+    out = pred.assign(day=pred["day"].astype(str)).merge(pd.concat(parts), on=["target", "gate", "day", "slot"], how="left")
+    out["pred"] = out["pred"] + out["bias"].fillna(0.0)
+    return out.drop(columns="bias")
 
 
 def quantiles_path(cfg):
@@ -130,10 +156,11 @@ def walk_forward(cfg, store, start=None, end=None, targets=None, log=None, save=
     if quantiles:
         targets = [t for t in targets if t in PRICES]
     surprise = bool(fc.get("da_surprise"))
-    da_pred = _da_predictions(cfg, panel) if surprise else None
+    gap = bool(fc.get("ida_gap_at_da"))
+    da_pred = _da_predictions(cfg, panel) if surprise or gap else None
     rows = []
     for gate in GATES:
-        pairs = [t for t in targets if gate in fc["gates"][t]]
+        pairs = sorted((t for t in targets if gate in fc["gates"][t]), key=lambda t: t != "da")
         if not pairs:
             continue
         full = panel.features(gate)
@@ -143,8 +170,12 @@ def walk_forward(cfg, store, start=None, end=None, targets=None, log=None, save=
         for target in pairs:
             y = panel.val[target].ravel()
             nv = panel.naive(target, full)
-            base = full["da_d0"].to_numpy() if target in PRICES[1:] and gate != "da" else None
-            yt = y - base if base is not None else y
+            base = base_tr = None
+            if target in PRICES[1:] and gate != "da":
+                base = base_tr = full["da_d0"].to_numpy()
+            elif gap and not quantiles and target in PRICES[1:]:
+                base, base_tr = da_pred, panel.val["da"].ravel()
+            yt = y - base_tr if base_tr is not None else y
             lo, hi = (fc.get("bounds") or {}).get(target, [None, None])
             for f0, f1 in folds:
                 te = (day_col >= f0) & (day_col < f1)
@@ -164,7 +195,7 @@ def walk_forward(cfg, store, start=None, end=None, targets=None, log=None, save=
                     if base is not None:
                         pred = pred + base[te]
                     pred = np.clip(pred, lo if lo is not None else -np.inf, hi if hi is not None else np.inf)
-                    if surprise and target == "da" and gate == "da":
+                    if da_pred is not None and target == "da" and gate == "da":
                         da_pred[te] = pred
                 rows.append(pd.DataFrame({"target": target, "gate": gate, "day": day_col[te].astype(str),
                                           "slot": slot_col[te], "actual": y[te], "pred": pred, "naive": nv[te], **qs}))

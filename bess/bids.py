@@ -20,13 +20,44 @@ def price_taking(market: str, index: pd.DatetimeIndex, trade: np.ndarray, limits
     }, columns=COLUMNS)
 
 
+def _lines(q: np.ndarray, tol: float) -> int:
+    """Bid lines the curve writes for one rising quantity path."""
+    up, dn = np.maximum(q, 0), np.maximum(-q, 0)
+    return int(up[0] > tol) + int(dn[-1] > tol) + int((np.diff(up) > tol).sum()) + int((-np.diff(dn) > tol).sum())
+
+
+def limit_steps(Q: np.ndarray, steps: int, tol: float = 1e-6) -> np.ndarray:
+    """Rising quantity paths with at most `steps` bid lines per column; smaller steps join the next kept step."""
+    out = Q.copy()
+    for j in range(Q.shape[1]):
+        q = Q[:, j]
+        if _lines(q, tol) <= steps:
+            continue
+        d = np.diff(q)
+        nz = np.flatnonzero(d > tol)
+        order = nz[np.argsort(-d[nz], kind="stable")]
+        for n in range(min(steps, len(nz)), 0, -1):
+            keep = np.sort(order[:n])
+            nd = np.zeros_like(d)
+            for k in nz:
+                nxt = keep[keep >= k]
+                nd[nxt[0] if len(nxt) else keep[-1]] += d[k]
+            r = q[0] + np.concatenate([[0.0], np.cumsum(nd)])
+            if _lines(r, tol) <= steps:
+                out[:, j] = r
+                break
+    return out
+
+
 def curve(market: str, index: pd.DatetimeIndex, prices: np.ndarray, qty: np.ndarray, limits: dict,
-          tick: float = 0.01, tol: float = 1e-6) -> pd.DataFrame:
-    """Step bids from scenario prices and net sell quantities that rise with the price."""
+          tick: float = 0.01, tol: float = 1e-6, max_steps: int | None = None) -> pd.DataFrame:
+    """Step bids from scenario prices and net sell quantities that rise with the price, at most max_steps lines per period."""
     P = np.clip(np.nan_to_num(np.asarray(prices, float)), limits["min"], limits["max"])
     o = np.argsort(P, axis=0, kind="stable")
     P = np.take_along_axis(P, o, 0)
     Q = np.maximum.accumulate(np.take_along_axis(np.asarray(qty, float), o, 0), axis=0)
+    if max_steps:
+        Q = limit_steps(Q, int(max_steps), tol)
     up, dn = np.maximum(Q, 0), np.maximum(-Q, 0)
     S, n = P.shape
     cols = np.arange(n)

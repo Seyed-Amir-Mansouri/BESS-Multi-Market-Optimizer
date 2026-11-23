@@ -167,9 +167,29 @@ def _write_band(cfg, store, days):
 
 @pytest.mark.parametrize("enabled", [True, False])
 def test_afrr_switch_controls_the_band(cfg, store, enabled):
-    cfg.raw["markets"]["afrr_capacity"]["enabled"] = enabled
+    cfg.raw["participation"]["afrr"] = enabled
     _write(cfg, store, DAYS)
     _write_band(cfg, store, DAYS)
     res = run(cfg, store, "pf", DAYS[5], DAYS[6])
     assert (res["afrr_capacity"].sum() > 0) == enabled
     assert ((res["band_up_mw"] + res["band_dn_mw"]).sum() > 0) == enabled
+
+
+@pytest.mark.parametrize("market", ["da", "ida1", "ida2", "ida3"])
+def test_auction_switch_keeps_the_battery_out_of_that_market(cfg, store, market):
+    cfg.raw["participation"][market] = False
+    _write(cfg, store, DAYS)
+    res = run(cfg, store, "pf", DAYS[5], DAYS[6])
+    assert res[market].abs().sum() == 0
+    assert res[[m for m in ("da", "ida1", "ida2", "ida3") if m != market]].abs().sum().sum() > 0
+
+
+def test_participation_links_keep_combinations_realistic(cfg):
+    p = cfg.raw["participation"]
+    p["imbalance"] = True
+    p["continuous"] = False
+    assert not cfg.on("imbalance")
+    p["continuous"] = True
+    assert cfg.on("imbalance")
+    with pytest.raises(KeyError):
+        cfg.on("afrr_energy")

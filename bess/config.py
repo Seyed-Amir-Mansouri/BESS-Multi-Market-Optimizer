@@ -59,6 +59,18 @@ class Config:
         end = self.raw["data"].get("end")
         return date.fromisoformat(str(end)) if end else date.today()
 
+    def on(self, market: str) -> bool:
+        """Whether the battery takes part in a market, with the links that keep the combination realistic."""
+        p = self.raw.get("participation") or {}
+        if market in PARTICIPATION:
+            if market == "imbalance":
+                return bool(p.get("imbalance", False)) and self.on("continuous")
+            return bool(p.get(market, market != "afrr"))
+        raise KeyError(market)
+
+
+PARTICIPATION = ("da", "ida1", "ida2", "ida3", "afrr", "continuous", "imbalance")
+
 
 def load_config(path: str | os.PathLike | None = None, base_dir: str | os.PathLike | None = None,
                 overrides: dict | None = None) -> Config:
