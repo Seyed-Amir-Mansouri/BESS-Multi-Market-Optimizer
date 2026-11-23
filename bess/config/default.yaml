@@ -321,6 +321,7 @@ simulator:
   interim_cycle_cost_eur_per_mwh: 0.0
   interim_exclusive: true
   solver_time_limit_s: 30
+  solver: gurobi
 
 # Fill
 fill:

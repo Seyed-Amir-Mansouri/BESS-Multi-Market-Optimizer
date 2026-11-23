@@ -10,7 +10,7 @@ from ..battery import Battery, Fees
 from ..bids import COLUMNS, band_offers, curve, price_taking
 from ..config import Config
 from ..market_simulator import Context, coverage, hour_groups
-from ..optim import STAGES, DayInput, Plan, next_day_value, solve_day
+from ..optim import LP, STAGES, DayInput, Plan, next_day_value, solve_day
 
 
 class Strategy:
@@ -23,6 +23,7 @@ class Strategy:
         sim = cfg["simulator"]
         self.soft = float(sim["soft_penalty_eur_per_mwh"])
         self.time_limit = float(sim["solver_time_limit_s"])
+        LP.solver = str(sim.get("solver", "highs"))
         self.plan_end = None
         self.plan_soc = None
         self.afrr = cfg.on("afrr")
