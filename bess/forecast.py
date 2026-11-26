@@ -151,6 +151,7 @@ def walk_forward(cfg, store, start=None, end=None, targets=None, log=None, save=
     slot_col = np.tile(np.arange(NS), len(panel.days))
     folds = folds or _folds(start, end, int(fc["retrain_months"]))
     embargo = timedelta(days=int(fc["embargo_days"]))
+    window = timedelta(days=int(fc["train_window_days"])) if fc.get("train_window_days") else None
     params = dict(fc["lgbm"])
     targets = targets or list(fc["gates"])
     if quantiles:
@@ -182,6 +183,8 @@ def walk_forward(cfg, store, start=None, end=None, targets=None, log=None, save=
                 if not te.any():
                     continue
                 tr = (day_col < f0 - embargo) & ~np.isnan(yt)
+                if window is not None:
+                    tr &= day_col >= f0 - embargo - window
                 pred = np.full(te.sum(), np.nan)
                 qs = {}
                 if quantiles and len(np.unique(day_col[tr])) >= int(fc["min_train_days"]):

@@ -21,6 +21,17 @@ class Battery:
     degradation: float
     max_cycles: float
     reserve_h: float
+    wear_on: str = "both"
+
+    @property
+    def deg_c(self) -> float:
+        """Wear cost per MWh charged."""
+        return 0.0 if self.wear_on == "discharge" else self.degradation
+
+    @property
+    def deg_d(self) -> float:
+        """Wear cost per MWh discharged."""
+        return self.degradation
 
     @classmethod
     def from_config(cls, cfg: Config) -> "Battery":
@@ -29,7 +40,8 @@ class Battery:
         return cls(power=float(b["power_mw"]), energy=e, eta_c=float(b["eta_charge"]), eta_d=float(b["eta_discharge"]),
                    soc_min=e * float(b["soc_min_frac"]), soc_max=e * float(b["soc_max_frac"]),
                    soc_target=e * float(b["soc_initial_frac"]), degradation=float(b["degradation_eur_per_mwh"]),
-                   max_cycles=float(b["max_cycles_per_day"]), reserve_h=float(b["afrr_full_activation_h"]))
+                   max_cycles=float(b["max_cycles_per_day"]) if str(cfg["simulator"].get("cycle_limit", "soft")) != "none" else float("inf"), reserve_h=float(b["afrr_full_activation_h"]),
+                   wear_on=str(b.get("degradation_on", "both")))
 
 
 @dataclass(frozen=True)

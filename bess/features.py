@@ -88,6 +88,12 @@ class Panel:
         cols = {"dow": d.day_of_week.to_numpy(), "month": d.month.to_numpy(),
                 "doy_sin": np.sin(2 * np.pi * doy / 365.25), "doy_cos": np.cos(2 * np.pi * doy / 365.25),
                 "holiday": np.array([x in hol for x in self.days], dtype=float), "regime": r}
+        if self.cfg["forecast"].get("holiday_period_features"):
+            off = {x for x in hol} | {x for x in self.days if x.weekday() >= 5}
+            one = timedelta(days=1)
+            cols["xmas"] = np.array([(x.month == 12 and x.day >= 22) or (x.month == 1 and x.day <= 7) for x in self.days], dtype=float)
+            cols["near_holiday"] = np.array([x not in hol and (x - one in hol or x + one in hol) for x in self.days], dtype=float)
+            cols["bridge"] = np.array([x not in off and x - one in off and x + one in off for x in self.days], dtype=float)
         out = {k: np.repeat(v, NS) for k, v in cols.items()}
         out["slot"] = np.tile(np.arange(NS), len(self.days))
         return out

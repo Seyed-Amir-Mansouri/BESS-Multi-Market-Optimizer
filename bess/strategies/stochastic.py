@@ -27,7 +27,8 @@ class Stochastic(LightGBM):
         self.fallbacks = 0
         sc = cfg.get("stochastic") or {}
         self.band_mode = str(sc.get("band", "deterministic"))
-        self.nonant = bool(sc.get("nonanticipative", True))
+        na = sc.get("nonanticipative", True)
+        self.nonant = na if isinstance(na, (bool, str)) else int(na)
         self.deliverable = bool(sc.get("deliverable", False))
         self.gates = sc.get("gates")
 

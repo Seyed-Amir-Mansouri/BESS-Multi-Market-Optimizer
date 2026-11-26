@@ -52,7 +52,7 @@ backtest:
 
 scenarios:
   window_days: 365
-  lag_days: 2
+  lag_days: 1
   min_days: 30
   season_days: 45
   recency_days: 180
@@ -80,14 +80,16 @@ stochastic:
   gates: null
 
 battery:
-  power_mw: 5.0
-  energy_mwh: 10.0
+  power_mw: 20.0
+  energy_mwh: 40.0
   eta_charge: 0.95
   eta_discharge: 0.95
   soc_min_frac: 0.0
   soc_max_frac: 1.0
   soc_initial_frac: 0.5
-  degradation_eur_per_mwh: 3.0
+  degradation_eur_per_mwh: 5.0
+  degradation_on: discharge
+  degradation_note: "Wear cost per MWh. discharge charges it on energy delivered to the grid only, so a full cycle is counted once; both charges it on charging and discharging."
   max_cycles_per_day: 2.0
   afrr_full_activation_h: 1.0
 
@@ -312,9 +314,13 @@ simulator:
     activation_lag_qh: 1
     price_lag_qh: 5
     note: "at the start of each quarter-hour the battery deviates from its schedule when the forecast gain of being long or short over the latest auction price exceeds the threshold; the forecast uses the previous quarter's aFRR activation and imbalance prices from price_lag_qh quarters back"
-  end_of_day: target
+  end_of_day: curve
   end_curve_points: 5
-  cycle_limit: hard
+  end_of_day_note: "target forces the target charge at every midnight. curve values the charge left at midnight by a one-day plan on day-ahead prices (perfect foresight uses the next day's actual prices) and falls back to the target when that solve has no feasible plan. curve with soc_estimate cleared beat target with plan by 3.7% on quick and 4.0% on eval."
+  soc_estimate: cleared
+  soc_estimate_note: "Start-of-day charge used by the gates before the day: plan adds the rest of the previous day's last plan to the metered charge; cleared adds the charge change of the positions already cleared."
+  cycle_limit: none
+  cycle_limit_note: "hard caps discharge at max_cycles_per_day full cycles in the plan and at settlement; soft caps it in the plan only; none drops the cap and leaves cycling to the wear cost."
   cycle_reserve_mwh: 0.0
   cycle_activation_factor: 1.0
   soc_margin_mwh: 2.0
@@ -322,6 +328,8 @@ simulator:
   interim_exclusive: true
   solver_time_limit_s: 30
   solver: gurobi
+  solver_deterministic: true
+  solver_deterministic_note: "true gives Gurobi a work limit of solver_time_limit_s work units instead of a time limit, so repeated runs give the same result whatever the machine load."
 
 # Fill
 fill:
@@ -343,12 +351,12 @@ fill:
 forecast:
   retrain_months: 2
   min_train_days: 45
-  embargo_days: 2
+  embargo_days: 1
   lookback_days: 21
   spread_margin:
     scale: 1.0
     window_days: 28
-    lag_days: 2
+    lag_days: 1
   model_select:
     enabled: false
     window_days: 56
