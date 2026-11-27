@@ -149,6 +149,7 @@ class DayInput:
     e_dn: np.ndarray
     soc0: float
     fixed: dict = field(default_factory=dict)
+    trade_cap: dict = field(default_factory=dict)
     band_fixed: tuple | None = None
     ratio_up: np.ndarray | None = None
     end_price: float | None = None
@@ -248,7 +249,8 @@ def _scenario(lp: LP, inp: DayInput, bat: Battery, fees: Fees, w: float, r_up, r
         price = np.asarray(inp.price[st], float)
         open_ = np.asarray(inp.open[st], bool) & ~np.isnan(price)
         p = _clean(price)
-        tub = np.where(open_, 2 * P, 0.0)
+        cap = inp.trade_cap.get(st)
+        tub = np.where(open_, 2 * P if cap is None else np.minimum(2 * P, cap), 0.0)
         if shared is not None and st != current and "dev" in shared:
             s = lp.var(n, 0.0, tub, cost=w * (-p * dt + fees.market * dt))
             b = lp.var(n, 0.0, tub, cost=w * (p * dt + fees.market * dt))
