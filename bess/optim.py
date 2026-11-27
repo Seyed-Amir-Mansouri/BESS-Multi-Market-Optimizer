@@ -394,9 +394,24 @@ def _groups(inps: list, curve: str | None, nonanticipative) -> np.ndarray | None
     return rank * k // len(inps)
 
 
+def _cvar(lp: LP, spans: list, probs: np.ndarray, weight: float, alpha: float) -> None:
+    """Add weight times the conditional value at risk of scenario profit to the objective."""
+    starts = np.cumsum([0] + [len(c) for c in lp.c])
+    eta = lp.var(1, -np.inf, np.inf, cost=-weight)
+    u = lp.var(len(spans), 0.0, np.inf, cost=weight * probs / (1.0 - alpha))
+    for j, (c0, c1, e0, e1) in enumerate(spans):
+        w = probs[j]
+        idx = [np.arange(starts[c0], starts[c1])] + [i for i, _ in lp.extra[e0:e1]]
+        val = [np.concatenate(lp.c[c0:c1]) / w if c1 > c0 else np.zeros(0)] + [c / w for _, c in lp.extra[e0:e1]]
+        idx, val = np.concatenate(idx), np.concatenate(val)
+        keep = val != 0
+        lp.row([(1.0, u[j:j + 1]), (-1.0, eta), (-val[keep], idx[keep])], 0.0, np.inf)
+
+
 def solve_scenarios(inps: list, probs, bat: Battery, fees: Fees, soft_penalty: float = 1e4, time_limit: float = 30.0,
                     shortfall: float | None = None, curve_stage: str | None = None, light: bool = False,
-                    nonanticipative: bool | int | str = False, deliverable: bool = False) -> Plan:
+                    nonanticipative: bool | int | str = False, deliverable: bool = False,
+                    risk_weight: float = 0.0, risk_alpha: float = 0.9, single: bool = False) -> Plan:
     """Maximise expected profit over scenarios with a shared band and a price-monotone current-market curve."""
     probs = np.asarray(probs, float) / np.sum(probs)
     n = inps[0].n
@@ -421,10 +436,15 @@ def solve_scenarios(inps: list, probs, bat: Battery, fees: Fees, soft_penalty: f
         if dev is not None:
             rule = {}
             shared = [{"rule": rule, "dev": d} for d in dev]
-        blocks = [_scenario(lp, inp, bat, fees, w, r_up, r_dn, soft_penalty, shortfall, light,
-                            shared[j] if dev is not None else shared[group[j]] if group is not None else None,
-                            None if binaries is None else binaries[j])
-                  for j, (w, inp) in enumerate(zip(probs, inps))]
+        blocks, spans = [], []
+        for j, (w, inp) in enumerate(zip(probs, inps)):
+            n0, e0 = len(lp.c), len(lp.extra)
+            blocks.append(_scenario(lp, inp, bat, fees, w, r_up, r_dn, soft_penalty, shortfall, light,
+                                    shared[j] if dev is not None else shared[group[j]] if group is not None else None,
+                                    None if binaries is None else binaries[j]))
+            spans.append((n0, len(lp.c), e0, len(lp.extra)))
+        if risk_weight > 0 and len(inps) > 1:
+            _cvar(lp, spans, probs, risk_weight, risk_alpha)
         if curve is not None and len(inps) > 1:
             price = np.vstack([_clean(i.price[curve]) for i in inps])
             S = np.vstack([b[1][curve][0] for b in blocks])
@@ -435,7 +455,7 @@ def solve_scenarios(inps: list, probs, bat: Battery, fees: Fees, soft_penalty: f
                 ia, ib = order[k], order[k + 1]
                 eq = np.isclose(price[ia, cols], price[ib, cols])
                 lp.con([(1.0, S[ia, cols]), (-1.0, B[ia, cols]), (-1.0, S[ib, cols]), (1.0, B[ib, cols])],
-                       np.where(eq, 0.0, -np.inf), 0.0)
+                       0.0 if single else np.where(eq, 0.0, -np.inf), 0.0)
             if deliverable:
                 _deliverable(lp, inps[0], [b[0][curve] for b in blocks], curve, bat,
                              shortfall if shortfall is not None else soft_penalty)

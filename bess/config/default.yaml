@@ -78,6 +78,9 @@ stochastic:
   nonanticipative: true
   deliverable: false
   gates: null
+  risk: {weight: 0.5, alpha: 0.9}
+  single_bid: take
+  single_bid_margin_eur: 5.0
 
 battery:
   power_mw: 20.0
