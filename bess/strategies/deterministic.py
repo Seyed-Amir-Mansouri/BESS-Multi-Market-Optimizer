@@ -68,7 +68,7 @@ class LightGBM(Deterministic):
         self.pred = {k: g.set_index(["day", "slot"])["pred"] for k, g in p.groupby(["target", "gate"])} if not p.empty else {}
         sm = cfg["forecast"].get("spread_margin") or {}
         self.scale = float(sm.get("scale", 0.0))
-        self.lag = int(sm.get("lag_days", 2))
+        self.lag = int(sm.get("lag_days", 1))
         self.margins = error_margins(p, int(sm.get("window_days", 28))) if self.scale > 0 and not p.empty else {}
         ms = cfg["forecast"].get("model_select") or {}
         self.select = bool(ms.get("enabled", False)) and not p.empty

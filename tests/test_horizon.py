@@ -46,8 +46,8 @@ def test_deliverable_curves_keep_every_mix_within_limits(cfg):
         i.fixed = {st: np.zeros(n) for st in STAGES[:-1]}
     plan = solve_scenarios(inps, [0.5, 0.5], bat, fees, curve_stage="ida3", light=True, deliverable=True)
     hi, lo = plan.scen_trade.max(0), plan.scen_trade.min(0)
-    down = bat.soc_target - np.cumsum(np.maximum(hi, 0) / bat.eta_d - np.maximum(-hi, 0) * bat.eta_c) * 0.25
-    up = bat.soc_target - np.cumsum(lo * bat.eta_c) * 0.25
+    down = inps[0].soc0 - np.cumsum(np.maximum(hi, 0) / bat.eta_d - np.maximum(-hi, 0) * bat.eta_c) * 0.25
+    up = inps[0].soc0 - np.cumsum(lo * bat.eta_c) * 0.25
     assert down.min() >= bat.soc_min - 1e-6
     assert up.max() <= bat.soc_max + 1e-6
 

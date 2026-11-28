@@ -17,7 +17,10 @@ TZ = "Europe/Madrid"
 @pytest.fixture
 def cfg(tmp_path):
     return load_config(base_dir=tmp_path, overrides={"paths": {"data_dir": str(tmp_path / "store"),
-                                                             "report_dir": str(tmp_path / "reports")}})
+                                                             "report_dir": str(tmp_path / "reports")},
+                                                   "battery": {"power_mw": 5.0, "energy_mwh": 10.0,
+                                                               "degradation_eur_per_mwh": 3.0, "degradation_on": "both"},
+                                                   "simulator": {"cycle_limit": "hard"}})
 
 
 @pytest.fixture

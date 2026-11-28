@@ -5,17 +5,41 @@ from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
-from scipy.optimize import Bounds, LinearConstraint, milp
-from scipy.sparse import coo_matrix
+from scipy.optimize import Bounds, LinearConstraint, linprog, milp
+from scipy.sparse import coo_matrix, vstack
 
 from .battery import Battery, Fees
 
 STAGES = ["da", "ida1", "ida2", "ida3"]
 BAND_FROM = 2
+LAZY_ROUNDS = 4
+FLOW_TOL = 1e-6
+
+
+_ENV = {}
+
+
+def _gurobi_env():
+    """Shared quiet Gurobi environment, or None when gurobipy or its licence is unavailable."""
+    if "env" not in _ENV:
+        try:
+            import gurobipy as gp
+            env = gp.Env(empty=True)
+            env.setParam("OutputFlag", 0)
+            env.start()
+            _ENV["env"] = env
+        except Exception:
+            _ENV["env"] = None
+    return _ENV["env"]
 
 
 class LP:
-    """Sparse LP builder solved with HiGHS."""
+    """Sparse LP builder solved with Gurobi when selected and licensed, otherwise HiGHS."""
+
+    solver = "highs"
+    deterministic = False
+    method = "highs"
+    gap = 1e-4
 
     def __init__(self):
         self.lb, self.ub, self.c, self.integ = [], [], [], []
@@ -60,17 +84,53 @@ class LP:
         self.rub.append(np.array([ub], float))
         self.m += 1
 
-    def solve(self, time_limit: float = 30.0, gap: float = 1e-4) -> tuple[np.ndarray, float]:
+    def solve(self, time_limit: float = 30.0, gap: float | None = None) -> tuple[np.ndarray, float]:
+        gap = self.gap if gap is None else gap
         c = np.concatenate(self.c)
         for idx, cost in self.extra:
             np.add.at(c, idx, cost)
-        a = coo_matrix((np.concatenate(self.v), (np.concatenate(self.r), np.concatenate(self.k))), shape=(self.m, self.n))
-        res = milp(c, integrality=np.concatenate(self.integ), bounds=Bounds(np.concatenate(self.lb), np.concatenate(self.ub)),
-                   constraints=LinearConstraint(a.tocsr(), np.concatenate(self.rlb), np.concatenate(self.rub)),
-                   options={"time_limit": time_limit, "mip_rel_gap": gap, "disp": False})
-        if res.x is None:
-            raise RuntimeError(f"MILP failed: {res.message}")
+        a = coo_matrix((np.concatenate(self.v), (np.concatenate(self.r), np.concatenate(self.k))), shape=(self.m, self.n)).tocsr()
+        lo, hi = np.concatenate(self.rlb), np.concatenate(self.rub)
+        lb, ub = np.concatenate(self.lb), np.concatenate(self.ub)
+        integ = np.concatenate(self.integ)
+        if self.solver == "gurobi" and _gurobi_env() is not None:
+            return self._gurobi(c, a, lo, hi, lb, ub, integ, time_limit, gap)
+        if integ.any():
+            res = milp(c, integrality=integ, bounds=Bounds(lb, ub), constraints=LinearConstraint(a, lo, hi),
+                       options={"time_limit": time_limit, "mip_rel_gap": gap, "disp": False})
+            if res.x is None:
+                raise RuntimeError(f"MILP failed: {res.message}")
+            return res.x, float(res.fun)
+        eq = np.isfinite(lo) & (lo == hi)
+        up, dn = ~eq & np.isfinite(hi), ~eq & np.isfinite(lo)
+        res = linprog(c, A_ub=vstack([a[up], -a[dn]]).tocsr(), b_ub=np.concatenate([hi[up], -lo[dn]]),
+                      A_eq=a[eq], b_eq=lo[eq], bounds=np.column_stack([lb, ub]), method=self.method,
+                      options={"time_limit": time_limit})
+        if res.status != 0 or res.x is None:
+            raise RuntimeError(f"LP failed: {res.message}")
         return res.x, float(res.fun)
+
+    def _gurobi(self, c, a, lo, hi, lb, ub, integ, time_limit, gap) -> tuple[np.ndarray, float]:
+        import gurobipy as gp
+        inf = gp.GRB.INFINITY
+        m = gp.Model(env=_gurobi_env())
+        if self.deterministic:
+            m.Params.WorkLimit = time_limit
+        else:
+            m.Params.TimeLimit = time_limit
+        m.Params.MIPGap = gap
+        x = m.addMVar(self.n, lb=np.clip(lb, -inf, inf), ub=np.clip(ub, -inf, inf),
+                      vtype=np.where(integ > 0, gp.GRB.INTEGER, gp.GRB.CONTINUOUS))
+        eq = np.isfinite(lo) & (lo == hi)
+        up, dn = ~eq & np.isfinite(hi), ~eq & np.isfinite(lo)
+        for rows, sense, rhs in ((eq, "=", lo), (up, "<", hi), (dn, ">", lo)):
+            if rows.any():
+                m.addMConstr(a[rows], x, sense, rhs[rows])
+        m.setObjective(c @ x, gp.GRB.MINIMIZE)
+        m.optimize()
+        if m.SolCount == 0:
+            raise RuntimeError(f"Gurobi failed: status {m.Status}")
+        return x.X, float(m.ObjVal)
 
 
 @dataclass
@@ -89,6 +149,7 @@ class DayInput:
     e_dn: np.ndarray
     soc0: float
     fixed: dict = field(default_factory=dict)
+    trade_cap: dict = field(default_factory=dict)
     band_fixed: tuple | None = None
     ratio_up: np.ndarray | None = None
     end_price: float | None = None
@@ -149,8 +210,13 @@ def _band(lp: LP, inps: list, probs: np.ndarray, P: float) -> tuple[np.ndarray, 
 
 
 def _scenario(lp: LP, inp: DayInput, bat: Battery, fees: Fees, w: float, r_up, r_dn, soft_penalty: float,
-              shortfall: float | None, light: bool = False, shared: dict | None = None) -> tuple[dict, dict, dict]:
-    """Stage blocks of one scenario with costs weighted by its probability."""
+              shortfall: float | None, light: bool = False, shared: dict | None = None,
+              binaries: dict | None = None) -> tuple[dict, dict, dict, dict]:
+    """Stage blocks of one scenario with costs weighted by its probability.
+
+    binaries maps an interim stage to a direction per period: 1 discharge only, -1 charge only, 0 free.
+    None gives every period an integer switch instead.
+    """
     n, dt, P = inp.n, inp.dt, bat.power
     a_up, a_dn = np.clip(_clean(inp.share_up), 0, 1), np.clip(_clean(inp.share_dn), 0, 1)
     cap_up, cap_dn = _clean(inp.cap_up), _clean(inp.cap_dn)
@@ -168,7 +234,7 @@ def _scenario(lp: LP, inp: DayInput, bat: Battery, fees: Fees, w: float, r_up, r
     prev = None
     prev_val = np.zeros(n)
     rev_terms, rev_const = [], np.zeros(n)
-    pos, trades, socs = {}, {}, {}
+    pos, trades, socs, flows = {}, {}, {}, {}
     last = len(STAGES) - 1
     current = next((st for st in STAGES if st not in inp.fixed), None)
     for k, st in enumerate(STAGES):
@@ -183,8 +249,17 @@ def _scenario(lp: LP, inp: DayInput, bat: Battery, fees: Fees, w: float, r_up, r
         price = np.asarray(inp.price[st], float)
         open_ = np.asarray(inp.open[st], bool) & ~np.isnan(price)
         p = _clean(price)
-        tub = np.where(open_, 2 * P, 0.0)
-        if shared is not None and st != current and st in shared:
+        cap = inp.trade_cap.get(st)
+        tub = np.where(open_, 2 * P if cap is None else np.minimum(2 * P, cap), 0.0)
+        if shared is not None and st != current and "dev" in shared:
+            s = lp.var(n, 0.0, tub, cost=w * (-p * dt + fees.market * dt))
+            b = lp.var(n, 0.0, tub, cost=w * (p * dt + fees.market * dt))
+            rule = shared["rule"]
+            if st not in rule:
+                rule[st] = (lp.var(n, -np.inf, np.inf), lp.var(n, -np.inf, np.inf))
+            base, slope = rule[st]
+            lp.con([(1.0, s), (-1.0, b), (-1.0, base), (-shared["dev"], slope)], 0.0, 0.0)
+        elif shared is not None and st != current and st in shared:
             s, b = shared[st]
             lp.add_cost(s, w * (-p * dt + fees.market * dt))
             lp.add_cost(b, w * (p * dt + fees.market * dt))
@@ -210,13 +285,21 @@ def _scenario(lp: LP, inp: DayInput, bat: Battery, fees: Fees, w: float, r_up, r
             pos[st] = x
             prev = x
             continue
-        c = lp.var(n, 0.0, P, cost=w * ((bat.degradation + fees.toll_charge) * dt if final else inp.interim_cost * dt))
-        d = lp.var(n, 0.0, P, cost=w * ((bat.degradation + fees.toll_discharge) * dt if final else inp.interim_cost * dt))
+        c = lp.var(n, 0.0, P, cost=w * ((bat.deg_c + fees.toll_charge) * dt if final else inp.interim_cost * dt))
+        d = lp.var(n, 0.0, P, cost=w * ((bat.deg_d + fees.toll_discharge) * dt if final else inp.interim_cost * dt))
         lp.con([(1.0, d), (-1.0, c), (-1.0, x)], 0.0, 0.0)
         if inp.interim_exclusive and not final:
-            z = lp.var(n, 0.0, 1.0, integer=True)
-            lp.con([(1.0, c), (-P, z)], -np.inf, 0.0)
-            lp.con([(1.0, d), (P, z)], -np.inf, P)
+            flows[st] = (c, d)
+            if binaries is None:
+                z = lp.var(n, 0.0, 1.0, integer=True)
+                lp.con([(1.0, c), (-P, z)], -np.inf, 0.0)
+                lp.con([(1.0, d), (P, z)], -np.inf, P)
+            else:
+                way = np.asarray(binaries.get(st, np.zeros(n, int)), int)
+                if (way > 0).any():
+                    lp.con([(1.0, c[way > 0])], -np.inf, 0.0)
+                if (way < 0).any():
+                    lp.con([(1.0, d[way < 0])], -np.inf, 0.0)
         soc = lp.var(n + 1, -np.inf, np.inf)
         slack = final_slack if final else np.full(n + 1, soft_penalty)
         lo = lp.var(n + 1, 0.0, np.inf, cost=w * slack)
@@ -257,17 +340,18 @@ def _scenario(lp: LP, inp: DayInput, bat: Battery, fees: Fees, w: float, r_up, r
         if inp.end_curve is None:
             lp.con([(1.0, soc[n:]), (-1.0, tp), (1.0, tn)], bat.soc_target, bat.soc_target)
         if final:
-            lp.add_cost(r_up, w * (bat.degradation + fees.toll_discharge) * a_up * dt)
-            lp.add_cost(r_dn, w * (bat.degradation + fees.toll_charge) * a_dn * dt)
-            cy = lp.var(1, 0.0, np.inf, cost=w * soft_penalty)
-            lp.row([(dt, d), (dt * a_up * inp.cycle_activation, r_up), (-1.0, cy)], -np.inf, bat.max_cycles * bat.energy - inp.cycle_reserve)
+            lp.add_cost(r_up, w * (bat.deg_d + fees.toll_discharge) * a_up * dt)
+            lp.add_cost(r_dn, w * (bat.deg_c + fees.toll_charge) * a_dn * dt)
+            if np.isfinite(bat.max_cycles):
+                cy = lp.var(1, 0.0, np.inf, cost=w * soft_penalty)
+                lp.row([(dt, d), (dt * a_up * inp.cycle_activation, r_up), (-1.0, cy)], -np.inf, bat.max_cycles * bat.energy - inp.cycle_reserve)
         pos[st], trades[st], socs[st] = x, (s, b), soc
         prev = x
 
     if tax > 0:
         z = lp.var(n, 0.0, np.inf, cost=w * tax)
         lp.con([(1.0, z)] + rev_terms, rev_const, np.inf)
-    return pos, trades, socs
+    return pos, trades, socs, flows
 
 
 def _deliverable(lp: LP, inp: DayInput, xs: list, stage: str, bat: Battery, penalty: float) -> None:
@@ -295,39 +379,109 @@ def _deliverable(lp: LP, inp: DayInput, xs: list, stage: str, bat: Battery, pena
     lp.con([(1.0, up[1:]), (-1.0, b)], -np.inf, bat.soc_max)
 
 
+def _groups(inps: list, curve: str | None, nonanticipative) -> np.ndarray | None:
+    """Group index per scenario for the shared later-auction plan, by mean current-auction price."""
+    if nonanticipative is False or nonanticipative is None:
+        return None
+    k = 1 if nonanticipative is True else int(nonanticipative)
+    if k <= 0 or k >= len(inps):
+        return None
+    if k == 1 or curve is None:
+        return np.zeros(len(inps), int)
+    level = np.array([np.nanmean(_clean(i.price[curve])) for i in inps])
+    rank = np.empty(len(inps), int)
+    rank[np.argsort(level, kind="stable")] = np.arange(len(inps))
+    return rank * k // len(inps)
+
+
+def _cvar(lp: LP, spans: list, probs: np.ndarray, weight: float, alpha: float) -> None:
+    """Add weight times the conditional value at risk of scenario profit to the objective."""
+    starts = np.cumsum([0] + [len(c) for c in lp.c])
+    eta = lp.var(1, -np.inf, np.inf, cost=-weight)
+    u = lp.var(len(spans), 0.0, np.inf, cost=weight * probs / (1.0 - alpha))
+    for j, (c0, c1, e0, e1) in enumerate(spans):
+        w = probs[j]
+        idx = [np.arange(starts[c0], starts[c1])] + [i for i, _ in lp.extra[e0:e1]]
+        val = [np.concatenate(lp.c[c0:c1]) / w if c1 > c0 else np.zeros(0)] + [c / w for _, c in lp.extra[e0:e1]]
+        idx, val = np.concatenate(idx), np.concatenate(val)
+        keep = val != 0
+        lp.row([(1.0, u[j:j + 1]), (-1.0, eta), (-val[keep], idx[keep])], 0.0, np.inf)
+
+
 def solve_scenarios(inps: list, probs, bat: Battery, fees: Fees, soft_penalty: float = 1e4, time_limit: float = 30.0,
                     shortfall: float | None = None, curve_stage: str | None = None, light: bool = False,
-                    nonanticipative: bool = False, deliverable: bool = False) -> Plan:
+                    nonanticipative: bool | int | str = False, deliverable: bool = False,
+                    risk_weight: float = 0.0, risk_alpha: float = 0.9, single: bool = False) -> Plan:
     """Maximise expected profit over scenarios with a shared band and a price-monotone current-market curve."""
     probs = np.asarray(probs, float) / np.sum(probs)
     n = inps[0].n
-    lp = LP()
-    r_up, r_dn = _band(lp, inps, probs, bat.power)
     curve = curve_stage if curve_stage in STAGES and curve_stage not in inps[0].fixed else None
     g = inps[0].groups.get(curve) if curve is not None else None
     if g is not None and len(inps) > 1:
         for i in inps:
             pr = pd.Series(np.asarray(i.price[curve], float)).groupby(np.asarray(g)).transform("mean").to_numpy()
             i.price = dict(i.price, **{curve: pr})
-    shared = {} if nonanticipative else None
-    blocks = [_scenario(lp, inp, bat, fees, w, r_up, r_dn, soft_penalty, shortfall, light, shared)
-              for w, inp in zip(probs, inps)]
-    if curve is not None and len(inps) > 1:
-        price = np.vstack([_clean(i.price[curve]) for i in inps])
-        S = np.vstack([b[1][curve][0] for b in blocks])
-        B = np.vstack([b[1][curve][1] for b in blocks])
-        order = np.argsort(price, axis=0, kind="stable")
-        cols = np.arange(n)
-        for k in range(len(inps) - 1):
-            ia, ib = order[k], order[k + 1]
-            eq = np.isclose(price[ia, cols], price[ib, cols])
-            lp.con([(1.0, S[ia, cols]), (-1.0, B[ia, cols]), (-1.0, S[ib, cols]), (1.0, B[ib, cols])],
-                   np.where(eq, 0.0, -np.inf), 0.0)
-        if deliverable:
-            _deliverable(lp, inps[0], [b[0][curve] for b in blocks], curve, bat,
-                         shortfall if shortfall is not None else soft_penalty)
 
-    sol, fun = lp.solve(time_limit=time_limit)
+    affine = nonanticipative == "affine" and curve is not None and len(inps) > 1
+    group = None if affine else _groups(inps, curve, nonanticipative)
+    dev = None
+    if affine:
+        price = np.vstack([_clean(i.price[curve]) for i in inps])
+        dev = (price - probs @ price) / 100.0
+
+    def build(binaries):
+        lp = LP()
+        r_up, r_dn = _band(lp, inps, probs, bat.power)
+        shared = [{} for _ in range(int(group.max()) + 1)] if group is not None else [None]
+        if dev is not None:
+            rule = {}
+            shared = [{"rule": rule, "dev": d} for d in dev]
+        blocks, spans = [], []
+        for j, (w, inp) in enumerate(zip(probs, inps)):
+            n0, e0 = len(lp.c), len(lp.extra)
+            blocks.append(_scenario(lp, inp, bat, fees, w, r_up, r_dn, soft_penalty, shortfall, light,
+                                    shared[j] if dev is not None else shared[group[j]] if group is not None else None,
+                                    None if binaries is None else binaries[j]))
+            spans.append((n0, len(lp.c), e0, len(lp.extra)))
+        if risk_weight > 0 and len(inps) > 1:
+            _cvar(lp, spans, probs, risk_weight, risk_alpha)
+        if curve is not None and len(inps) > 1:
+            price = np.vstack([_clean(i.price[curve]) for i in inps])
+            S = np.vstack([b[1][curve][0] for b in blocks])
+            B = np.vstack([b[1][curve][1] for b in blocks])
+            order = np.argsort(price, axis=0, kind="stable")
+            cols = np.arange(n)
+            for k in range(len(inps) - 1):
+                ia, ib = order[k], order[k + 1]
+                eq = np.isclose(price[ia, cols], price[ib, cols])
+                lp.con([(1.0, S[ia, cols]), (-1.0, B[ia, cols]), (-1.0, S[ib, cols]), (1.0, B[ib, cols])],
+                       0.0 if single else np.where(eq, 0.0, -np.inf), 0.0)
+            if deliverable:
+                _deliverable(lp, inps[0], [b[0][curve] for b in blocks], curve, bat,
+                             shortfall if shortfall is not None else soft_penalty)
+        return lp, blocks, r_up, r_dn
+
+    lazy = LP.solver != "gurobi" and any(i.interim_exclusive for i in inps)
+    binaries = [{} for _ in inps] if lazy else None
+    for _ in range(LAZY_ROUNDS + 1):
+        lp, blocks, r_up, r_dn = build(binaries)
+        sol, fun = lp.solve(time_limit=time_limit)
+        if binaries is None:
+            break
+        added = False
+        for j, b in enumerate(blocks):
+            for st, (c, d) in b[3].items():
+                both = (sol[c] > FLOW_TOL) & (sol[d] > FLOW_TOL)
+                if both.any():
+                    way = binaries[j].get(st, np.zeros(n, int)).copy()
+                    way[both] = np.where(sol[d][both] >= sol[c][both], 1, -1)
+                    binaries[j][st] = way
+                    added = True
+        if not added:
+            break
+    else:
+        lp, blocks, r_up, r_dn = build(None)
+        sol, fun = lp.solve(time_limit=time_limit)
     position = {st: sum(w * sol[b[0][st]] for w, b in zip(probs, blocks)) for st in blocks[0][0]}
     trade = {st: sum(w * (sol[b[1][st][0]] - sol[b[1][st][1]]) for w, b in zip(probs, blocks)) for st in blocks[0][1]}
     last = STAGES[-1]
@@ -351,12 +505,13 @@ def next_day_value(price: np.ndarray, bat: Battery, fees: Fees, socs: np.ndarray
     out = []
     for s0 in socs:
         lp = LP()
-        c = lp.var(n, 0.0, bat.power, cost=(p + bat.degradation + fees.toll_charge + fees.market) * dt)
-        d = lp.var(n, 0.0, bat.power, cost=(-p + bat.degradation + fees.toll_discharge + fees.market) * dt)
+        c = lp.var(n, 0.0, bat.power, cost=(p + bat.deg_c + fees.toll_charge + fees.market) * dt)
+        d = lp.var(n, 0.0, bat.power, cost=(-p + bat.deg_d + fees.toll_discharge + fees.market) * dt)
         soc = lp.var(n + 1, bat.soc_min, bat.soc_max)
         lp.con([(1.0, soc[:1])], s0, s0)
         lp.con([(1.0, soc[1:]), (-1.0, soc[:-1]), (-bat.eta_c * dt, c), (dt / bat.eta_d, d)], 0.0, 0.0)
         lp.con([(1.0, soc[n:])], bat.soc_target, bat.soc_target)
-        lp.row([(dt, d)], -np.inf, bat.max_cycles * bat.energy)
+        if np.isfinite(bat.max_cycles):
+            lp.row([(dt, d)], -np.inf, bat.max_cycles * bat.energy)
         out.append(-lp.solve()[1])
     return np.array(out)

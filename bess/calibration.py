@@ -54,7 +54,7 @@ def _matrix(df: pd.DataFrame, col: str, pos: dict) -> np.ndarray:
 def calibrate(cfg, pred: pd.DataFrame, quant: pd.DataFrame) -> dict:
     """Calibrated quantiles per market and gate from scaled errors of the days in a rolling window."""
     c = cfg["forecast"].get("conformal") or {}
-    window, lag = int(c.get("window_days", 56)), int(c.get("lag_days", 2))
+    window, lag = int(c.get("window_days", 56)), int(c.get("lag_days", 1))
     min_days, floor = int(c.get("min_days", 28)), float(c.get("min_half_width", 1.0))
     blocks, gamma = int(c.get("hour_blocks", 1)), float(c.get("adapt_rate", 0.0))
     native = bool(c.get("native", False))

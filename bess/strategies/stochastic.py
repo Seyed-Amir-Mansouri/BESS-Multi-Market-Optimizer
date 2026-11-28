@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 
 from ..calibration import calibrate
 from ..forecast import known, load_predictions, load_quantiles
-from ..market_simulator import Context
+from ..bids import price_taking
+from ..market_simulator import Context, coverage
 from ..optim import STAGES, solve_scenarios
 from ..scenarios import ScenarioGenerator
 from ..uncertainty import ErrorModel
@@ -27,14 +29,20 @@ class Stochastic(LightGBM):
         self.fallbacks = 0
         sc = cfg.get("stochastic") or {}
         self.band_mode = str(sc.get("band", "deterministic"))
-        self.nonant = bool(sc.get("nonanticipative", True))
+        na = sc.get("nonanticipative", True)
+        self.nonant = na if isinstance(na, (bool, str)) else int(na)
         self.deliverable = bool(sc.get("deliverable", False))
         self.gates = sc.get("gates")
+        risk = sc.get("risk") or {}
+        self.risk_weight = float(risk.get("weight", 0.0))
+        self.risk_alpha = float(risk.get("alpha", 0.9))
+        self.single = str(sc.get("single_bid", "off"))
+        self.single_margin = float(sc.get("single_bid_margin_eur", 5.0))
 
     def scenarios(self, ctx: Context, v: dict) -> tuple[list, np.ndarray]:
         slots = self.md.slot.loc[ctx.index].to_numpy()
         kn = {t: known(self.md, t, ctx.day, ctx.as_of) for t in self.source}
-        return self.gen.generate(ctx.day, v, kn, slots, self.source)
+        return self.gen.generate(ctx.day, v, kn, slots, self.source, ctx.gate)
 
     def decide(self, ctx: Context):
         if self.gates and ctx.gate not in self.gates:
@@ -55,10 +63,27 @@ class Stochastic(LightGBM):
         try:
             plan = solve_scenarios(inps, prob, self.bat, self.fees.on(ctx.day), self.soft, self.time_limit,
                                    shortfall=self.shortfall, curve_stage=cur, light=True,
-                                   nonanticipative=self.nonant, deliverable=self.deliverable)
+                                   nonanticipative=self.nonant, deliverable=self.deliverable,
+                                   risk_weight=self.risk_weight, risk_alpha=self.risk_alpha,
+                                   single=self.single != "off")
         except RuntimeError:
             self.fallbacks += 1
             return self.bids(ctx, self.solve(ctx, v))
         self.plan_end = float(plan.soc[-1])
         self.plan_soc = plan.soc
+        if self.single != "off" and plan.scen_trade is not None:
+            return self.single_bids(ctx, plan)
         return self.bids(ctx, plan)
+
+    def single_bids(self, ctx: Context, plan) -> pd.DataFrame:
+        """One quantity per quarter-hour, price-taking or limited at the mean scenario price less a margin."""
+        q = np.round(plan.scen_trade[0], 3) * coverage(self.cfg, ctx.gate, ctx.index)
+        limits = self.cfg["markets"][ctx.gate]["price_limits"]
+        b = price_taking(ctx.gate, ctx.index, q, limits)
+        if self.single == "limit" and not b.empty:
+            mean = pd.Series(np.nanmean(plan.scen_price, axis=0), index=ctx.index)
+            m = mean.reindex(pd.DatetimeIndex(b["delivery_start"])).to_numpy()
+            sell = b["side"].to_numpy() == "sell"
+            b["price"] = np.round(np.clip(np.where(sell, m - self.single_margin, m + self.single_margin),
+                                          limits["min"], limits["max"]), 2)
+        return b

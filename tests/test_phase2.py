@@ -212,3 +212,12 @@ def test_interim_plans_do_not_charge_and_discharge_at_once(cfg, exclusive):
     soc = _stage_soc(plan.position["ida1"], 8.0)
     feasible = soc.min() >= bat.soc_min - 1e-6 and soc.max() <= bat.soc_max + 1e-6 and abs(soc[-1] - bat.soc_target) < 1e-6
     assert feasible == exclusive
+
+
+def test_discharge_wear_and_no_cycle_limit(cfg):
+    from bess.config import Config, _deep_merge
+    c = Config(raw=_deep_merge(cfg.raw, {"battery": {"degradation_on": "discharge"}, "simulator": {"cycle_limit": "none"}}),
+               base_dir=cfg.base_dir)
+    bat = Battery.from_config(c)
+    assert bat.deg_c == 0.0 and bat.deg_d == 3.0
+    assert bat.max_cycles == float("inf")

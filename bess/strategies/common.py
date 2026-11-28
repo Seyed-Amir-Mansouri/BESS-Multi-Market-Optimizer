@@ -10,7 +10,7 @@ from ..battery import Battery, Fees
 from ..bids import COLUMNS, band_offers, curve, price_taking
 from ..config import Config
 from ..market_simulator import Context, coverage, hour_groups
-from ..optim import STAGES, DayInput, Plan, next_day_value, solve_day
+from ..optim import LP, STAGES, DayInput, Plan, next_day_value, solve_day
 
 
 class Strategy:
@@ -23,6 +23,8 @@ class Strategy:
         sim = cfg["simulator"]
         self.soft = float(sim["soft_penalty_eur_per_mwh"])
         self.time_limit = float(sim["solver_time_limit_s"])
+        LP.solver = str(sim.get("solver", "highs"))
+        LP.deterministic = bool(sim.get("solver_deterministic", False))
         self.plan_end = None
         self.plan_soc = None
         self.afrr = cfg.on("afrr")
@@ -99,7 +101,14 @@ class Strategy:
         return self._curve
 
     def solve(self, ctx: Context, v: dict) -> Plan:
-        plan = solve_day(self.day_input(ctx, v), self.bat, self.fees.on(ctx.day), self.soft, self.time_limit)
+        inp = self.day_input(ctx, v)
+        try:
+            plan = solve_day(inp, self.bat, self.fees.on(ctx.day), self.soft, self.time_limit)
+        except RuntimeError:
+            if inp.end_curve is None:
+                raise
+            inp.end_curve = None
+            plan = solve_day(inp, self.bat, self.fees.on(ctx.day), self.soft, self.time_limit)
         self.plan_end = float(plan.soc[-1])
         self.plan_soc = plan.soc
         return plan

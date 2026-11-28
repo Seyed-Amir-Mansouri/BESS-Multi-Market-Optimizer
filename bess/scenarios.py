@@ -43,16 +43,19 @@ class ScenarioGenerator:
         self.errors = errors
         self.samples = int(sc["samples"])
         self.count = int(sc["count"])
+        self.by_gate = {k: int(v) for k, v in (sc.get("count_by_gate") or {}).items()}
         self.seed = int(sc["seed"])
         self.bounds = cfg["forecast"].get("bounds") or {}
         self.only = sc.get("targets")
         self.cal = calibrated or {}
 
-    def generate(self, day, point: dict, known: dict, slots: np.ndarray, source: dict) -> tuple[list, np.ndarray]:
+    def generate(self, day, point: dict, known: dict, slots: np.ndarray, source: dict,
+                 gate: str | None = None) -> tuple[list, np.ndarray]:
         """Scenario dicts and probabilities; one scenario equal to the point forecast when no history exists."""
+        count = self.by_gate.get(gate, self.count)
         idx, w = self.errors.pool(day)
         targets = [t for t in source if np.isnan(known[t]).any() and (not self.only or t in self.only)]
-        if not len(idx) or not targets or self.count <= 1:
+        if not len(idx) or not targets or count <= 1:
             return [point], np.array([1.0])
         rng = np.random.default_rng(self.seed + day.toordinal())
         draw = rng.choice(len(idx), size=self.samples, p=w)
@@ -74,7 +77,7 @@ class ScenarioGenerator:
             if s > 0:
                 feats.append(err[t] / s)
         X = np.hstack(feats) if feats else np.zeros((len(rows), 1))
-        med, prob = kmedoids(X, cnt.astype(float), self.count, seed=self.seed)
+        med, prob = kmedoids(X, cnt.astype(float), count, seed=self.seed)
         out = []
         for m in med:
             v = dict(point)

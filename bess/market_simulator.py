@@ -191,6 +191,15 @@ def rebalance(index: pd.DatetimeIndex, x: np.ndarray, a_up: np.ndarray, a_dn: np
     return q
 
 
+def cleared_soc(x: np.ndarray, soc0: float, bat: Battery, dt: float = 0.25, tol: float = 1e-3) -> np.ndarray:
+    """Charge path of the cleared net position without balancing activations, positive when selling."""
+    soc = np.empty(len(x) + 1)
+    soc[0] = soc0
+    for i, y in enumerate(x):
+        soc[i + 1] = _step(soc[i], max(-y, 0.0), max(y, 0.0), bat, dt, tol)[0]
+    return soc
+
+
 def deviation(sign: float, y: float, a_up: float, a_dn: float, r_up: float, r_dn: float, s: float, bat: Battery,
               imb: dict, dt: float = 0.25) -> float:
     """Deliberate deviation in MW for one quarter-hour within free power and the charge kept for the band."""
@@ -274,7 +283,7 @@ def settle(act: pd.DataFrame, trades: dict, r_up: np.ndarray, r_dn: np.ndarray, 
     out["afrr_energy"] = float((e_up * a_up - e_dn * a_dn).sum() * dt)
     out["tax"] = -fees.ivpee * ivpee_base(revenue, np.nan_to_num(cap_up), np.nan_to_num(cap_dn), r_up, r_dn,
                                           a_up, a_dn, e_up, e_dn, dt)
-    out["degradation"] = -float((ch + dis).sum() * dt * bat.degradation)
+    out["degradation"] = -float((ch.sum() * bat.deg_c + dis.sum() * bat.deg_d) * dt)
     out["fees"] = -float(dis.sum() * dt * fees.toll_discharge + ch.sum() * dt * fees.toll_charge
                          + traded * fees.market)
     if imbalance is None:
@@ -318,9 +327,10 @@ class Simulator:
         self.guard = float(g["guard_mwh"]) if g.get("guard_mwh") is not None else None
         self.guard_lag = int(g.get("lag_qh", 2))
         self.prev = None
+        self.from_cleared = str(cfg["simulator"].get("soc_estimate", "plan")) == "cleared"
 
     def soc_estimate(self, as_of: pd.Timestamp, fallback: float) -> float:
-        """Start-of-day charge from the metered charge at the gate plus the rest of the previous day's plan."""
+        """Start-of-day charge from the metered charge at the gate plus the rest of the previous day's plan or cleared trades."""
         if self.prev is None:
             return fallback
         idx, soc, plan = self.prev
@@ -401,6 +411,8 @@ class Simulator:
                           slippage=float(self.rcfg.get("mic_slippage_eur_per_mwh", 0.0)),
                           imbalance=self._imbalance(idx), guard=self.guard, guard_lag=self.guard_lag, dev=dev)
         plan_soc = plans[-1][1] if plans else None
+        if self.from_cleared:
+            plan_soc = cleared_soc(prev + (0.0 if q is None else q) + (0.0 if dev is None else dev), soc_actual, self.bat)
         self.prev = (idx, soc, plan_soc)
         res["day"] = str(day)
         res["markets_held"] = ",".join(m for m in STAGES if act[m].notna().any())
